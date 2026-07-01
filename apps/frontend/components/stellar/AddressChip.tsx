@@ -1,3 +1,5 @@
+"use client";
+
 type AddressChipProps = {
   address: string;
   /** Stellar `G...` accounts and contract `C...` ids are both 56 chars; truncate the same way. */

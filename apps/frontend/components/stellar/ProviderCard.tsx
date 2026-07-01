@@ -23,7 +23,7 @@ type ProviderCardProps = {
 export function ProviderCard({ provider, trustScore, kybStatus }: ProviderCardProps) {
   return (
     <Link
-      href={`/providers/${encodeURIComponent(provider.id)}`}
+      href={`/providers/${provider.id.replace("/", "--")}`}
       style={{
         display: "block",
         padding: 16,
