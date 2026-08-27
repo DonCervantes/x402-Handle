@@ -57,6 +57,10 @@ stellar contract invoke \
 
 ## Notas de seguridad / scope
 
+- **Este contrato sigue siendo no-custodial en v1.** El escrow opcional para
+  llamadas x402 sobre umbral vive en un contrato separado:
+  [`contracts/soroban-escrow`](../soroban-escrow) (opt-in por proveedor).
+  El registry no toca fondos ni cambia su superficie de auditoría.
 - En v1, `log_payment` es abierto (cualquiera puede llamar). La protección es por `tx_hash` único.
 - En v2 planeamos que sólo el destino del pago (o un oracle whitelisteado) pueda llamar.
 - El contrato no custodia fondos: sólo registra metadata.
