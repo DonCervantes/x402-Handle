@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "indexer:testnet": "STELLAR_NETWORK=testnet bun --env-file=../../.env indexer.ts --watch",
+    "smoke:stellar:testnet": "STELLAR_NETWORK=testnet bun --env-file=../../.env scripts/smoke-stellar-testnet.ts",
     "market:snapshot": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/market-snapshot.ts",
     "customer:intelligence": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/customer-intelligence.ts",
     "coingecko:transactions": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/capture-coingecko-transactions.ts",

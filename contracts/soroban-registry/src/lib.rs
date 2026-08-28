@@ -262,9 +262,8 @@ impl FloviaRegistry {
 
     // ─── Payment log ────────────────────────────────────────────
 
-    /// Loguea un pago. Cualquiera puede llamar; la protección es
-    /// la unicidad de `tx_hash` (replay-proof).
-    /// En v2: restringir a llamadores autorizados (oracle, provider's middleware).
+    /// Loguea un pago. Requiere autorización del owner del provider y protege
+    /// contra replay mediante la unicidad de `tx_hash`.
     pub fn log_payment(
         env: Env,
         provider_id: u64,
@@ -278,6 +277,8 @@ impl FloviaRegistry {
             .persistent()
             .get(&DataKey::Provider(provider_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
+
+        provider.owner.require_auth();
 
         // Replay protection
         let consumed_key = DataKey::TxConsumed(tx_hash.clone());
