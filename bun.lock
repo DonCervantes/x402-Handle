@@ -152,6 +152,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@stellar/stellar-sdk": "^16.0.1",
+        "contracts": "workspace:*",
         "hono": "^4.7.10",
         "zod": "^4.3.6",
       },

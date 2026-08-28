@@ -8,3 +8,4 @@ export * from "./customer-intelligence";
 export * from "./service-analytics";
 export * from "./validators";
 export * from "./stellar-provider";
+export * from "./stellar-config";
