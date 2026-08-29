@@ -1,19 +1,21 @@
 #![no_std]
-//! Flovia Registry — On-chain registry of providers + payment log.
+//! HANDLE Registry — On-chain registry of providers + payment log.
+//! (Los nombres de paquete/tipos siguen siendo "Flovia" hasta el rename completo, ver #29.)
 //!
 //! Storage layout:
-//!   - DataKey::Admin               → Address (admin que puede pausar globalmente)
+//!   - DataKey::Admin               → Address (admin del contrato; hoy NO hay pausa global, ver #18)
 //!   - DataKey::ProviderCounter     → u64 (auto-increment de provider_id)
 //!   - DataKey::Provider(u64)       → Provider
 //!   - DataKey::PaymentCounter      → u64
 //!   - DataKey::Payment(u64)        → PaymentLog
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
 //!
-//! Events:
-//!   ("registry", "provider_registered", id)        data = Provider
-//!   ("registry", "provider_updated", id)           data = Provider
-//!   ("registry", "provider_deactivated", id)       data = ()
-//!   ("registry", "payment_logged", provider_id)    data = PaymentLog
+//! Events (topics via `symbol_short!`, éstos son los nombres reales on-chain):
+//!   ("registry", "prov_reg", provider_id)   data = Provider
+//!   ("registry", "prov_upd", provider_id)   data = Provider
+//!   ("registry", "prov_off", provider_id)   data = ()
+//!   ("registry", "prov_on",  provider_id)   data = ()
+//!   ("registry", "pay_log",  provider_id)   data = PaymentLog
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, panic_with_error,

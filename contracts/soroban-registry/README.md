@@ -1,31 +1,37 @@
-# flovia-registry — Contrato Soroban
+# HANDLE registry — Contrato Soroban
 
-> Registry on-chain de proveedores + log de pagos. Es el "anchor" de identidad y reputación de Flovia.
+> Registry on-chain de proveedores + log de pagos. Es el "anchor" de identidad y reputación de HANDLE.
+> (El paquete Rust todavía se llama `flovia-registry`; el rename completo es #29.)
 
 ## Qué hace
 
 - **`register_provider(...)`** — un proveedor registra su servicio en el catálogo público.
 - **`update_provider(id, ...)`** — el owner actualiza campos mutables (precio, endpoint, metadata).
-- **`deactivate(id)`** — el owner pausa el listing.
+- **`deactivate(id)`** / **`activate(id)`** — el owner pausa/reactiva el listing.
 - **`log_payment(provider_id, payer, amount, tx_hash)`** — registra que se cobró por uso (cualquiera puede llamarlo; protección contra duplicados por `tx_hash`).
-- **Lecturas:** `get_provider(id)`, `list_providers()`, `get_payment_log(provider_id, limit)`.
+- **Lecturas:** `get_provider(id)`, `provider_count()`, `list_providers(from_id, to_id)`, `get_payment(id)`, `payment_count()`, `list_payments(provider_id, from_id, to_id)`.
 
 ## Eventos
 
-- `provider_registered(id, owner)` — emitido al crear.
-- `provider_updated(id)` — emitido al actualizar.
-- `provider_deactivated(id)` — emitido al pausar.
-- `payment_logged(provider_id, payer, amount, tx_hash)` — emitido al loguear pago.
+Cada evento se publica con topics `("registry", <tipo>, provider_id)` usando `symbol_short!`, así que los nombres on-chain son los cortos de la tabla (no existen nombres largos tipo `provider_registered`):
 
-El indexer de Flovia (`apps/cli/indexer.ts`) consume estos eventos.
+| topic\[1] | Emitido por | data |
+| --- | --- | --- |
+| `prov_reg` | `register_provider` | `Provider` |
+| `prov_upd` | `update_provider` | `Provider` |
+| `prov_off` | `deactivate` | `()` |
+| `prov_on` | `activate` | `()` |
+| `pay_log` | `log_payment` | `PaymentLog` |
+
+El indexer (`apps/cli/indexer.ts`) filtra por `topics[1]`; el filtro vive en `apps/cli/registry-events.ts` y está testeado contra el fixture `apps/cli/fixtures/registry-events.json`.
 
 ## Build
 
 ```bash
-cd code/soroban-registry
-cargo build --target wasm32-unknown-unknown --release
-# o:
+cd contracts/soroban-registry
 stellar contract build
+# o:
+cargo build --target wasm32-unknown-unknown --release
 ```
 
 ## Test
@@ -42,6 +48,8 @@ stellar contract deploy \
   --source <admin-secret> \
   --network testnet
 ```
+
+El nombre `flovia_registry.wasm` sale del `name = "flovia-registry"` del `Cargo.toml` (guiones pasan a guiones bajos); si #29 renombra el paquete, cambia también el `.wasm`.
 
 Guardar el contract ID en `.env` como `REGISTRY_CONTRACT_ID`.
 
