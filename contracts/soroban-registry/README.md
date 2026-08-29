@@ -10,6 +10,10 @@
 - **`log_payment(provider_id, payer, amount, tx_hash)`** — registra que se cobró por uso (cualquiera puede llamarlo; protección contra duplicados por `tx_hash`).
 - **Lecturas:** `get_provider(id)`, `list_providers()`, `get_payment_log(provider_id, limit)`.
 
+## Paginación (indexer)
+
+`list_providers(from_id, to_id)` y `list_payments(provider_id, from_id, to_id)` recorren ids dentro del contrato, así que el rango por llamada está acotado a `MAX_PAGE_SIZE = 100` ids. Un rango mayor falla cerrado con `InvalidArgument` en vez de arriesgar los límites de instrucciones/memoria de Soroban a mitad del loop. El indexer debe paginar en ventanas `[from_id, from_id + 99]` hasta cubrir `provider_count()` / `payment_count()` (ver #15).
+
 ## Eventos
 
 - `provider_registered(id, owner)` — emitido al crear.

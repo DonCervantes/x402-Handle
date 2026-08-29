@@ -74,6 +74,14 @@ enum DataKey {
     TxConsumed(BytesN<32>),
 }
 
+// ───────────────────────────── Constants
+
+/// Maximum number of ids a single `list_providers` / `list_payments` call may
+/// scan. Ranges above this panic with `Error::InvalidArgument` so the tx fails
+/// closed instead of hitting Soroban instruction/memory limits mid-loop.
+/// Indexers paginate with `[from_id, from_id + MAX_PAGE_SIZE - 1]` windows.
+pub const MAX_PAGE_SIZE: u64 = 100;
+
 // ───────────────────────────── Contract
 
 #[contract]
@@ -241,8 +249,10 @@ impl FloviaRegistry {
 
     /// Devuelve los providers en rango [from_id, to_id] (inclusive).
     /// Si un id no existe, se omite. Pensado para paginación desde el indexer.
+    /// El rango no puede superar `MAX_PAGE_SIZE` ids; un rango mayor
+    /// panic-ea con `InvalidArgument` (fail closed).
     pub fn list_providers(env: Env, from_id: u64, to_id: u64) -> Vec<Provider> {
-        if from_id == 0 || to_id < from_id {
+        if from_id == 0 || to_id < from_id || to_id - from_id + 1 > MAX_PAGE_SIZE {
             panic_with_error!(&env, Error::InvalidArgument);
         }
         let mut out: Vec<Provider> = vec![&env];
@@ -332,13 +342,15 @@ impl FloviaRegistry {
 
     /// Lista pagos en rango [from_id, to_id] filtrados por provider_id.
     /// Para uso del indexer / análisis off-chain.
+    /// El rango no puede superar `MAX_PAGE_SIZE` ids; un rango mayor
+    /// panic-ea con `InvalidArgument` (fail closed).
     pub fn list_payments(
         env: Env,
         provider_id: u64,
         from_id: u64,
         to_id: u64,
     ) -> Vec<PaymentLog> {
-        if from_id == 0 || to_id < from_id {
+        if from_id == 0 || to_id < from_id || to_id - from_id + 1 > MAX_PAGE_SIZE {
             panic_with_error!(&env, Error::InvalidArgument);
         }
         let mut out: Vec<PaymentLog> = vec![&env];
@@ -494,6 +506,26 @@ mod test {
         }
         let list = client.list_providers(&1, &5);
         assert_eq!(list.len(), 5);
+    }
+
+    #[test]
+    fn list_providers_rejects_oversized_range() {
+        let (_env, client, _) = setup();
+        // MAX_PAGE_SIZE ids exactly is fine (ids that don't exist are skipped)
+        let ok = client.try_list_providers(&1, &MAX_PAGE_SIZE);
+        assert!(ok.is_ok());
+        // One id over the cap must fail closed with InvalidArgument
+        let err = client.try_list_providers(&1, &(MAX_PAGE_SIZE + 1));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn list_payments_rejects_oversized_range() {
+        let (_env, client, _) = setup();
+        let ok = client.try_list_payments(&1, &1, &MAX_PAGE_SIZE);
+        assert!(ok.is_ok());
+        let err = client.try_list_payments(&1, &1, &(MAX_PAGE_SIZE + 1));
+        assert!(err.is_err());
     }
 
     #[test]
