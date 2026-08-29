@@ -1,6 +1,6 @@
-# flovia-registry — Contrato Soroban
+# HANDLE registry — Soroban contract
 
-> Registry on-chain de proveedores + log de pagos. Es el "anchor" de identidad y reputación de Flovia.
+> Registry on-chain de proveedores + log de pagos. Es el "anchor" de identidad y reputación de HANDLE.
 
 ## Qué hace
 
@@ -17,12 +17,12 @@
 - `provider_deactivated(id)` — emitido al pausar.
 - `payment_logged(provider_id, payer, amount, tx_hash)` — emitido al loguear pago.
 
-El indexer de Flovia (`apps/cli/indexer.ts`) consume estos eventos.
+ El indexer (`apps/cli/indexer.ts`) consume estos eventos — ensure event names emitted by the contract match the indexer mapping.
 
 ## Build
 
 ```bash
-cd code/soroban-registry
+cd contracts/soroban-registry
 cargo build --target wasm32-unknown-unknown --release
 # o:
 stellar contract build
@@ -38,7 +38,7 @@ cargo test
 
 ```bash
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/flovia_registry.wasm \
+  --wasm target/wasm32-unknown-unknown/release/registry.wasm \
   --source <admin-secret> \
   --network testnet
 ```
