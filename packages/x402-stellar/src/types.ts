@@ -21,6 +21,14 @@ export const X402ChallengeSchema = z.object({
 export type X402Challenge = z.infer<typeof X402ChallengeSchema>;
 
 /**
+ * Un challenge expira cuando su `expires_at` ya pasó.
+ * `nowMs` es inyectable para facilitar los tests.
+ */
+export function isChallengeExpired(challenge: X402Challenge, nowMs: number = Date.now()): boolean {
+  return new Date(challenge.expires_at).getTime() <= nowMs;
+}
+
+/**
  * Configuración del middleware en el servidor.
  */
 export interface X402ServerConfig {

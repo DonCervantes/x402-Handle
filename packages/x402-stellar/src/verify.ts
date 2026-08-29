@@ -4,7 +4,6 @@
 // Consulta Horizon (única fuente de verdad) y valida cada campo
 // contra el challenge esperado.
 
-import { Horizon } from "@stellar/stellar-sdk";
 import type { VerifyResult, X402Challenge } from "./types";
 
 const HORIZON_URLS = {
@@ -12,10 +11,19 @@ const HORIZON_URLS = {
   public:  "https://horizon.stellar.org",
 };
 
-const USDC_ISSUERS = {
+export const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-};
+  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34KZVN",
+} as const;
+
+/**
+ * Mínima superficie de Horizon que usa `verifyUsdcPayment`.
+ * Permite inyectar un doble en los tests sin tocar la red.
+ */
+export interface HorizonLike {
+  transactions(): { transaction(id: string): { call(): Promise<any> } };
+  operations(): { forTransaction(id: string): { call(): Promise<any> } };
+}
 
 export interface VerifyOpts {
   txHash: string;
@@ -27,6 +35,7 @@ export interface VerifyOpts {
     usdcIssuer?: string;         // override opcional
   };
   horizonUrl?: string;           // override opcional
+  horizonServer?: HorizonLike;   // doble inyectable (tests/offline)
 }
 
 /**
@@ -39,10 +48,93 @@ export interface VerifyOpts {
  *
  * NUNCA confía en el cliente: todo se valida contra Horizon.
  */
+interface ExpectedPayment {
+  destination: string;
+  amountUsdc: string;
+  memo: string;
+  usdcIssuer: string;
+}
+
+async function loadHorizonServer(horizonUrl: string): Promise<HorizonLike> {
+  const { Horizon } = await import("@stellar/stellar-sdk");
+  return new Horizon.Server(horizonUrl);
+}
+
+/**
+ * Núcleo puro de la verificación: recibe la tx y la página de operaciones
+ * ya obtenidas de Horizon (o de un doble en tests) y valida cada campo.
+ * No depende de la red, así es trivial de testear.
+ */
+export function evaluatePayment(
+  tx: any,
+  opsPage: any,
+  expected: ExpectedPayment,
+  txHash: string
+): VerifyResult {
+  if (!tx.successful) {
+    return { ok: false, reason: "tx_failed" };
+  }
+
+  // Memo: Horizon devuelve memo_type ("text", "id", "hash", "return", "none")
+  // Para x402 usamos memo_type === "text".
+  if (tx.memo_type !== "text" || tx.memo !== expected.memo) {
+    return {
+      ok: false,
+      reason: "memo_mismatch",
+      detail: `expected memo "${expected.memo}", got "${tx.memo}" (type=${tx.memo_type})`,
+    };
+  }
+
+  const payment = opsPage.records.find(
+    (o: any) => o.type === "payment" || o.type === "path_payment_strict_send" || o.type === "path_payment_strict_receive"
+  );
+  if (!payment) {
+    return { ok: false, reason: "horizon_error", detail: "no payment operation in transaction" };
+  }
+
+  if (payment.to !== expected.destination) {
+    return {
+      ok: false,
+      reason: "destination_mismatch",
+      detail: `expected ${expected.destination}, got ${payment.to}`,
+    };
+  }
+
+  if (payment.asset_type === "native") {
+    return { ok: false, reason: "asset_mismatch", detail: "got XLM, expected USDC" };
+  }
+  if (payment.asset_code !== "USDC" || payment.asset_issuer !== expected.usdcIssuer) {
+    return {
+      ok: false,
+      reason: "asset_mismatch",
+      detail: `got ${payment.asset_code}/${payment.asset_issuer}, expected USDC/${expected.usdcIssuer}`,
+    };
+  }
+
+  if (Number(payment.amount) < Number(expected.amountUsdc)) {
+    return {
+      ok: false,
+      reason: "underpayment",
+      detail: `expected ${expected.amountUsdc}, got ${payment.amount}`,
+    };
+  }
+
+  return {
+    ok: true,
+    payer: payment.from,
+    amount: payment.amount,
+    txHash,
+    memo: tx.memo,
+  };
+}
+
 export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult> {
   const horizonUrl = opts.horizonUrl ?? HORIZON_URLS[opts.expected.network];
   const expectedIssuer = opts.expected.usdcIssuer ?? USDC_ISSUERS[opts.expected.network];
-  const server = new Horizon.Server(horizonUrl);
+  // El cliente Horizon sólo se necesita en producción; se importa de forma
+  // diferida para no acoplar la carga del módulo (y los tests) al SDK pesado.
+  const server: HorizonLike =
+    opts.horizonServer ?? (await loadHorizonServer(horizonUrl));
 
   let tx: any;
   try {
@@ -54,20 +146,6 @@ export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult>
     return { ok: false, reason: "horizon_error", detail: String(err?.message ?? err) };
   }
 
-  if (!tx.successful) {
-    return { ok: false, reason: "tx_failed" };
-  }
-
-  // Memo: Horizon devuelve memo_type ("text", "id", "hash", "return", "none")
-  // Para x402 usamos memo_type === "text".
-  if (tx.memo_type !== "text" || tx.memo !== opts.expected.memo) {
-    return {
-      ok: false,
-      reason: "memo_mismatch",
-      detail: `expected memo "${opts.expected.memo}", got "${tx.memo}" (type=${tx.memo_type})`,
-    };
-  }
-
   // Operations
   let opsPage: any;
   try {
@@ -76,45 +154,15 @@ export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult>
     return { ok: false, reason: "horizon_error", detail: String(err?.message ?? err) };
   }
 
-  const payment = opsPage.records.find(
-    (o: any) => o.type === "payment" || o.type === "path_payment_strict_send" || o.type === "path_payment_strict_receive"
+  return evaluatePayment(
+    tx,
+    opsPage,
+    {
+      destination: opts.expected.destination,
+      amountUsdc: opts.expected.amountUsdc,
+      memo: opts.expected.memo,
+      usdcIssuer: expectedIssuer,
+    },
+    opts.txHash
   );
-  if (!payment) {
-    return { ok: false, reason: "horizon_error", detail: "no payment operation in transaction" };
-  }
-
-  if (payment.to !== opts.expected.destination) {
-    return {
-      ok: false,
-      reason: "destination_mismatch",
-      detail: `expected ${opts.expected.destination}, got ${payment.to}`,
-    };
-  }
-
-  if (payment.asset_type === "native") {
-    return { ok: false, reason: "asset_mismatch", detail: "got XLM, expected USDC" };
-  }
-  if (payment.asset_code !== "USDC" || payment.asset_issuer !== expectedIssuer) {
-    return {
-      ok: false,
-      reason: "asset_mismatch",
-      detail: `got ${payment.asset_code}/${payment.asset_issuer}, expected USDC/${expectedIssuer}`,
-    };
-  }
-
-  if (Number(payment.amount) < Number(opts.expected.amountUsdc)) {
-    return {
-      ok: false,
-      reason: "underpayment",
-      detail: `expected ${opts.expected.amountUsdc}, got ${payment.amount}`,
-    };
-  }
-
-  return {
-    ok: true,
-    payer: payment.from,
-    amount: payment.amount,
-    txHash: opts.txHash,
-    memo: tx.memo,
-  };
 }

@@ -13,11 +13,34 @@ import { randomUUID } from "node:crypto";
 
 import {
   X402_VERSION,
+  isChallengeExpired,
   type X402Challenge,
   type X402ServerConfig,
 } from "./types";
-import { verifyUsdcPayment } from "./verify";
+import { verifyUsdcPayment, type HorizonLike } from "./verify";
 import { defaultReplayCache, type ReplayCache } from "./replay-cache";
+
+/**
+ * Almacén en memoria de challenges emitidos, indexado por memo.
+ * Permite validar la expiración del challenge que vincula el memo
+ * (evita que un memo antiguo se reutilice para un pago nuevo).
+ */
+export interface ChallengeStore {
+  get(memo: string): X402Challenge | undefined;
+  set(challenge: X402Challenge): void;
+}
+
+function createChallengeStore(): ChallengeStore {
+  const store = new Map<string, X402Challenge>();
+  return {
+    get(memo: string) {
+      return store.get(memo);
+    },
+    set(challenge: X402Challenge) {
+      store.set(challenge.memo, challenge);
+    },
+  };
+}
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -34,10 +57,13 @@ function newMemo(): string {
 
 export interface X402StellarMiddlewareOpts extends X402ServerConfig {
   replayCache?: ReplayCache;
+  challengeStore?: ChallengeStore;
+  horizonServer?: HorizonLike;
 }
 
 export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler {
   const cache = opts.replayCache ?? defaultReplayCache;
+  const challengeStore = opts.challengeStore ?? createChallengeStore();
   const ttl = opts.challengeTtlSec ?? 300;
   const issuer = opts.usdcIssuer ?? USDC_ISSUERS[opts.network];
 
@@ -61,6 +87,7 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
         memo,
         expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
       };
+      challengeStore.set(challenge);
       // Header informativo (opcional, no requerido por protocolo)
       c.header("X-PAYMENT-MEMO", memo);
       return c.json(challenge, 402);
@@ -105,7 +132,21 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
         memo,
         expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
       };
+      challengeStore.set(challenge);
       return c.json({ ...challenge, error: "missing_memo" }, 402);
+    }
+
+    // Si el memo corresponde a un challenge que emitimos, validamos su expiración.
+    // Esto impide reutilizar un memo de un challenge ya vencido.
+    const boundChallenge = challengeStore.get(expectedMemo);
+    if (boundChallenge && isChallengeExpired(boundChallenge)) {
+      return c.json(
+        {
+          error: "challenge_expired",
+          detail: `Challenge for memo "${expectedMemo}" expired at ${boundChallenge.expires_at}`,
+        },
+        402
+      );
     }
 
     const result = await verifyUsdcPayment({
@@ -118,6 +159,7 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
         usdcIssuer: issuer,
       },
       horizonUrl: opts.horizonUrl,
+      horizonServer: opts.horizonServer,
     });
 
     if (!result.ok) {
