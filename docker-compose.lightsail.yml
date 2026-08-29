@@ -27,26 +27,21 @@ x-main-bff: &main-bff
     BFF_ANALYTICS_POSTGRES_MODE: ${MAIN_BFF_ANALYTICS_POSTGRES_MODE:-snapshot}
     BFF_ANALYTICS_READ_MODEL_PATH: ${MAIN_BFF_ANALYTICS_READ_MODEL_PATH:-${BFF_ANALYTICS_READ_MODEL_PATH:-}}
     BFF_ANALYTICS_SNAPSHOT_ID: ${MAIN_BFF_ANALYTICS_SNAPSHOT_ID:-${BFF_ANALYTICS_SNAPSHOT_ID:-latest}}
-    # Authorized x402 discovery refresh token (external cron POSTs /aeo/x402/refresh).
+
+    # Authorized x402 discovery refresh token.
+    # External cron POSTs /aeo/x402/refresh.
     # Empty -> refresh endpoint disabled (403).
     BFF_X402_REFRESH_TOKEN: ${MAIN_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
-    # Persist refreshed discovery data on the /data volume so it survives redeploys.
+
+    # Persist refreshed discovery data on the /data volume.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
-    # Fall back to DEVELOP_HITPAY_* when MAIN_HITPAY_* is not configured
-    # so the demo HitPay MPP showcase keeps working on the production
-    # endpoint without forcing duplicate sandbox secrets.
-    HITPAY_API_KEY: ${MAIN_HITPAY_API_KEY:-${DEVELOP_HITPAY_API_KEY:-${HITPAY_API_KEY:-}}}
-    HITPAY_WEBHOOK_SALT: ${MAIN_HITPAY_WEBHOOK_SALT:-${DEVELOP_HITPAY_WEBHOOK_SALT:-${HITPAY_WEBHOOK_SALT:-}}}
-    HITPAY_MPP_ENDPOINT: ${MAIN_HITPAY_MPP_ENDPOINT:-${DEVELOP_HITPAY_MPP_ENDPOINT:-${HITPAY_MPP_ENDPOINT:-https://sandbox.mpp.hitpay.dev}}}
-    STRIPE_SECRET_KEY: ${MAIN_STRIPE_SECRET_KEY:-${STRIPE_SECRET_KEY:-}}
-    MPPX_PRIVATE_KEY: ${MAIN_MPPX_PRIVATE_KEY:-${MPPX_PRIVATE_KEY:-}}
-    MPP_SECRET_KEY: ${MAIN_MPP_SECRET_KEY:-}
-    SOLANA_MPP_RECIPIENT: ${MAIN_SOLANA_MPP_RECIPIENT:-${DEVELOP_SOLANA_MPP_RECIPIENT:-${SOLANA_MPP_RECIPIENT:-}}}
-    SOLANA_MPP_NETWORK: ${MAIN_SOLANA_MPP_NETWORK:-${DEVELOP_SOLANA_MPP_NETWORK:-${SOLANA_MPP_NETWORK:-devnet}}}
-    SOLANA_MPP_CURRENCY: ${MAIN_SOLANA_MPP_CURRENCY:-${DEVELOP_SOLANA_MPP_CURRENCY:-${SOLANA_MPP_CURRENCY:-4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU}}}
-    SOLANA_MPP_SECRET_KEY: ${MAIN_SOLANA_MPP_SECRET_KEY:-}
-    SOLANA_MPP_PAYER_PRIVATE_KEY: ${MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY:-${DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY:-${SOLANA_MPP_PAYER_PRIVATE_KEY:-}}}
-    SOLANA_MPP_RPC_URL: ${MAIN_SOLANA_MPP_RPC_URL:-${DEVELOP_SOLANA_MPP_RPC_URL:-${SOLANA_MPP_RPC_URL:-}}}
+
+    # Production payment configuration.
+    # MAIN_* secrets are required and do not fall back to development secrets.
+    HITPAY_API_KEY: ${MAIN_HITPAY_API_KEY:?MAIN_HITPAY_API_KEY is required}
+    HITPAY_WEBHOOK_SALT: ${MAIN_HITPAY_WEBHOOK_SALT:?MAIN_HITPAY_WEBHOOK_SALT is required}
+    HITPAY_MPP_ENDPOINT: ${MAIN_HITPAY_MPP_ENDPOINT:?MAIN_HITPAY_MPP_ENDPOINT is required}
+
   volumes:
     - ${MAIN_FLOVIA_DATA_DIR:?MAIN_FLOVIA_DATA_DIR is required}:/data
   expose:
@@ -71,11 +66,15 @@ x-develop-bff: &develop-bff
     BFF_ANALYTICS_POSTGRES_MODE: ${DEVELOP_BFF_ANALYTICS_POSTGRES_MODE:-snapshot}
     BFF_ANALYTICS_READ_MODEL_PATH: ${DEVELOP_BFF_ANALYTICS_READ_MODEL_PATH:-${BFF_ANALYTICS_READ_MODEL_PATH:-}}
     BFF_ANALYTICS_SNAPSHOT_ID: ${DEVELOP_BFF_ANALYTICS_SNAPSHOT_ID:-${BFF_ANALYTICS_SNAPSHOT_ID:-latest}}
-    # Authorized x402 discovery refresh token (external cron POSTs /aeo/x402/refresh).
+
+    # Authorized x402 discovery refresh token.
+    # External cron POSTs /aeo/x402/refresh.
     # Empty -> refresh endpoint disabled (403).
     BFF_X402_REFRESH_TOKEN: ${DEVELOP_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
-    # Persist refreshed discovery data on the /data volume so it survives redeploys.
+
+    # Persist refreshed discovery data on the /data volume.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
+
     HITPAY_API_KEY: ${DEVELOP_HITPAY_API_KEY:-${HITPAY_API_KEY:-}}
     HITPAY_WEBHOOK_SALT: ${DEVELOP_HITPAY_WEBHOOK_SALT:-${HITPAY_WEBHOOK_SALT:-}}
     HITPAY_MPP_ENDPOINT: ${DEVELOP_HITPAY_MPP_ENDPOINT:-${HITPAY_MPP_ENDPOINT:-https://sandbox.mpp.hitpay.dev}}
@@ -88,6 +87,7 @@ x-develop-bff: &develop-bff
     SOLANA_MPP_SECRET_KEY: ${DEVELOP_SOLANA_MPP_SECRET_KEY:-}
     SOLANA_MPP_PAYER_PRIVATE_KEY: ${DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY:-${SOLANA_MPP_PAYER_PRIVATE_KEY:-}}
     SOLANA_MPP_RPC_URL: ${DEVELOP_SOLANA_MPP_RPC_URL:-${SOLANA_MPP_RPC_URL:-}}
+
   volumes:
     - ${DEVELOP_FLOVIA_DATA_DIR:?DEVELOP_FLOVIA_DATA_DIR is required}:/data
   expose:
