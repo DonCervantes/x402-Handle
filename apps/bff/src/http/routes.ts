@@ -66,6 +66,14 @@ const customerRoutePatterns: Array<[CustomerRouteKind, RegExp]> = [
   ["workflowIntent", /^\/customers\/([^/]+)\/llm\/workflow-intent$/],
 ];
 
+// LLM / upsell customer routes can trigger paid Bedrock / Qvac inference, so
+// they are gated behind BFF_LLM_API_KEY + a per-key quota (http/llm-gate.ts).
+export const LLM_CUSTOMER_ROUTE_KINDS = new Set<CustomerRouteKind>([
+  "upsellMetrics",
+  "upsellExplanation",
+  "workflowIntent",
+]);
+
 export const normalizePath = (url: URL) => url.pathname.replace(/\/$/, "") || "/";
 
 export const matchCustomerRoute = (path: string): CustomerRouteMatch | null => {

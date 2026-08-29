@@ -26,8 +26,10 @@ import {
   workflowIntentReady,
   workflowIntentUnavailable,
 } from "./http/responses";
+import { createLlmGate } from "./http/llm-gate";
 import {
   AEO_X402_REFRESH_PATH,
+  LLM_CUSTOMER_ROUTE_KINDS,
   STELLAR_PLAYGROUND_PAY_PATH,
   matchCustomerRoute,
   matchProviderDetailRoute,
@@ -121,6 +123,7 @@ export const createBffHandler = (
   llmService: BffLlmService | null = resolveBffLlmService(),
   runtimeMetadata: BffRuntimeMetadata = resolveBffRuntimeMetadata(),
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
+  llmGate: (request: Request) => Response | null = createLlmGate(),
 ) => {
   let analyticsState: AnalyticsLoadState;
 
@@ -309,6 +312,14 @@ export const createBffHandler = (
       }
 
       return notFound(path);
+    }
+
+    // LLM / upsell customer routes can trigger paid Bedrock / Qvac inference;
+    // gate them (API key + per-key quota) before any data source work so an
+    // unauthenticated request fails fast even while analytics is loading.
+    if (customerRoute && LLM_CUSTOMER_ROUTE_KINDS.has(customerRoute.kind)) {
+      const rejection = llmGate(request);
+      if (rejection) return rejection;
     }
 
     switch (path) {

@@ -47,6 +47,22 @@ Peer x402 service analytics are sparse fixture-context comparisons, not live glo
 If future market intelligence endpoints are extended, it will also read generated snapshots, projections, or stored data.
 The policy is not to issue live CDP / Bitquery / RPC / SDK collector calls per user request.
 
+## LLM / upsell route auth
+
+Customer LLM / upsell routes (`/customers/:address/llm/upsell-metrics`,
+`/customers/:address/llm/upsell-explanation`, `/customers/:address/llm/workflow-intent`)
+trigger paid Bedrock / Qvac inference, so they are gated to prevent vendor cost
+abuse on public deployments:
+
+- `BFF_LLM_API_KEY` unset (public demo default) → the routes return 403 and are
+disabled.
+- `BFF_LLM_API_KEY` set → callers must present it as `Authorization: Bearer
+<key>` or the `x-llm-api-key` header; missing or wrong keys get 401.
+- Quotas: a fixed-window per-key counter limits requests to
+`BFF_LLM_QUOTA_MAX` (default 30) per `BFF_LLM_QUOTA_WINDOW_MS` (default
+60000); exceeding it returns 429. The frontend forwards the key server-side
+via `apps/frontend/proxy.ts` when it is configured.
+
 ## Read-only policy
 
 Demo endpoints accept GET only. Non-GET methods do not perform write operations and return an error response aligned with the read-only policy.
