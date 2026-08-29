@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@flovia/x402-stellar": "workspace:*",

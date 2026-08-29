@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@flovia/x402-stellar": "workspace:*",

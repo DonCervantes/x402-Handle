@@ -11,10 +11,13 @@ const workspaces = [
   "packages/contracts",
   "packages/sources",
   "packages/intelligence",
+  "packages/x402-stellar",
+  "packages/agent-sdk",
   "apps/cli",
   "apps/data",
   "apps/bff",
   "apps/frontend",
+  "apps/demo-provider",
 ] as const;
 
 for (const workspace of workspaces) {
