@@ -14,6 +14,22 @@
 
 ---
 
+## Branding note
+
+**Product name:** HANDLE - discovery and trust layer for agent-to-agent payments on Stellar. This is the name used in user-facing copy (frontend, landing page, docs) and in SCF hackathon materials.
+
+**Internal identifiers still use the legacy `flovia` codename** and are unaffected by the product rename:
+
+| Identifier | Where it appears | Maps to |
+| --- | --- | --- |
+| `@flovia/x402-stellar`, `@flovia/agent-sdk` | npm-style package names under `packages/*` | HANDLE SDK packages |
+| `flovia-bff` | `service` field in BFF `/`, `/health`, `/ready` responses | HANDLE's read-only demo API |
+| `fl-` prefix | x402 Stellar payment-challenge memo IDs (`packages/x402-stellar/src/server.ts`) | HANDLE on-chain memos |
+
+These are kept as-is for this PoC to avoid churn in imports, published-looking package names, deploy configs, and on-chain memo formatting. If HANDLE moves past hackathon/PoC status, a follow-up rename (`@handle/*`, `handle-bff`, `hd-` memo prefix) should be tracked as its own change rather than mixed into other work.
+
+---
+
 ## 🚀 What is Flovia?
 
 **Flovia** explores the emerging **agentic payments** layer: HTTP-native payment flows where agents, apps, and services can discover a paid resource, receive payment requirements, satisfy them programmatically, and continue without manual signup or API-key provisioning.
