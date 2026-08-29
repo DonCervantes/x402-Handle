@@ -45,6 +45,17 @@ import {
   listStellarProviders,
   recommendStellarProviders,
 } from "./data/stellar-providers";
+import {
+  type CorsOptions,
+  createCorsOptions,
+  handleCorsPreFlight,
+  wrapResponseWithCors,
+} from "./middleware/cors";
+import {
+  RateLimiter,
+  resolveRateLimitConfigs,
+  getRateLimitCategory,
+} from "./middleware/rate-limit";
 
 type RequestTimeoutController = {
   timeout(request: Request, seconds: number): void;
@@ -121,6 +132,8 @@ export const createBffHandler = (
   llmService: BffLlmService | null = resolveBffLlmService(),
   runtimeMetadata: BffRuntimeMetadata = resolveBffRuntimeMetadata(),
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
+  corsOptions: CorsOptions = createCorsOptions(),
+  rateLimiter: RateLimiter = new RateLimiter(resolveRateLimitConfigs()),
 ) => {
   let analyticsState: AnalyticsLoadState;
 
@@ -247,56 +260,98 @@ export const createBffHandler = (
   };
 
   return async (request: Request, server?: RequestTimeoutController) => {
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return handleCorsPreFlight(request, corsOptions);
+    }
+
     const url = new URL(request.url);
     const path = normalizePath(url);
+
+    // Apply rate limiting to sensitive endpoints
+    const rateLimitCategory = getRateLimitCategory(path);
+    if (rateLimitCategory) {
+      const rateLimitResponse = rateLimiter.checkRateLimit(request, rateLimitCategory);
+      if (rateLimitResponse) {
+        return wrapResponseWithCors(request, rateLimitResponse, corsOptions);
+      }
+    }
+
     const customerRoute = matchCustomerRoute(path);
     const providerRoute = matchProviderDetailRoute(path);
     const stellarProviderRoute = matchStellarProviderRoute(path);
 
     // ─── Día 4 — registry Stellar (independiente del data layer legacy) ───
     if (request.method === "GET" && path === "/stellar/health") {
-      return json(await getStellarHealth());
+      return wrapResponseWithCors(request, json(await getStellarHealth()), corsOptions);
     }
     if (request.method === "GET" && path === "/stellar/providers") {
-      return cachedJson(await listStellarProviders());
+      return wrapResponseWithCors(request, cachedJson(await listStellarProviders()), corsOptions);
     }
     if (request.method === "GET" && stellarProviderRoute) {
       if (stellarProviderRoute.kind === "detail") {
         const provider = await getStellarProviderById(stellarProviderRoute.id);
-        return provider ? cachedJson(provider) : notFound(path);
+        return wrapResponseWithCors(
+          request,
+          provider ? cachedJson(provider) : notFound(path),
+          corsOptions,
+        );
       }
       const intelligence = await getProviderIntelligence(stellarProviderRoute.id);
-      return intelligence ? cachedJson(intelligence) : notFound(path);
+      return wrapResponseWithCors(
+        request,
+        intelligence ? cachedJson(intelligence) : notFound(path),
+        corsOptions,
+      );
     }
     if (request.method === "GET" && path === "/stellar/recommend") {
       const category = url.searchParams.get("category") ?? undefined;
       const maxPriceUsdcRaw = url.searchParams.get("maxPriceUsdc");
       const maxPriceUsdc = maxPriceUsdcRaw ? Number(maxPriceUsdcRaw) : undefined;
-      return json(await recommendStellarProviders({ category, maxPriceUsdc }));
+      return wrapResponseWithCors(
+        request,
+        json(await recommendStellarProviders({ category, maxPriceUsdc })),
+        corsOptions,
+      );
     }
     if (request.method === "GET" && path === "/stats/overview") {
-      return cachedJson(await getStatsOverview());
+      return wrapResponseWithCors(request, cachedJson(await getStatsOverview()), corsOptions);
     }
     if (request.method === "POST" && path === STELLAR_PLAYGROUND_PAY_PATH) {
       const body = await request.json().catch(() => null);
       const providerId = typeof body?.providerId === "string" ? body.providerId : null;
-      if (!providerId) return badRequest("Body debe incluir { providerId: string }.");
+      if (!providerId) {
+        return wrapResponseWithCors(
+          request,
+          badRequest("Body debe incluir { providerId: string }."),
+          corsOptions,
+        );
+      }
       // El pago real toma varios segundos (submit + confirmación en Horizon).
       server?.timeout(request, 0);
       const result = await runPlaygroundPayment(providerId);
-      return json(result, { status: result.ok ? 200 : 422 });
+      return wrapResponseWithCors(
+        request,
+        json(result, { status: result.ok ? 200 : 422 }),
+        corsOptions,
+      );
     }
 
     if (request.method !== "GET") {
       if (request.method === "POST" && path === AEO_X402_REFRESH_PATH) {
-        return handleAeoRefresh(request, server);
+        return wrapResponseWithCors(request, await handleAeoRefresh(request, server), corsOptions);
       }
 
       if (
         request.method === "POST" &&
         (path === "/showcase/stripe-mpp/pay" || path === "/showcase/solana-mpp/pay")
       ) {
-        return handleShowcaseRoute(request, path) ?? notFound(path);
+        const showcaseResponse = handleShowcaseRoute(request, path);
+        return wrapResponseWithCors(
+          request,
+          showcaseResponse ?? notFound(path),
+          corsOptions,
+        );
       }
 
       if (
@@ -305,50 +360,70 @@ export const createBffHandler = (
         customerRoute !== null ||
         providerRoute !== null
       ) {
-        return methodNotAllowed();
+        return wrapResponseWithCors(request, methodNotAllowed(), corsOptions);
       }
 
-      return notFound(path);
+      return wrapResponseWithCors(request, notFound(path), corsOptions);
     }
 
     switch (path) {
       case "/":
-        return json({ service: "flovia-bff", status: "ok" });
+        return wrapResponseWithCors(
+          request,
+          json({ service: "flovia-bff", status: "ok" }),
+          corsOptions,
+        );
       case "/health":
-        return json({
-          status: "ok",
-          service: "flovia-bff",
-          commitHash: runtimeMetadata.commitHash,
-          startedAt: runtimeMetadata.startedAt,
-          memory: memoryUsageMib(),
-          ...analyticsStatusBody(),
-        });
+        return wrapResponseWithCors(
+          request,
+          json({
+            status: "ok",
+            service: "flovia-bff",
+            commitHash: runtimeMetadata.commitHash,
+            startedAt: runtimeMetadata.startedAt,
+            memory: memoryUsageMib(),
+            ...analyticsStatusBody(),
+          }),
+          corsOptions,
+        );
       case "/ready":
         if (analyticsState.status === "loading") {
-          return json(
-            {
-              status: "loading",
-              service: "flovia-bff",
-              ...analyticsStatusBody(),
-            },
-            { status: 503 },
+          return wrapResponseWithCors(
+            request,
+            json(
+              {
+                status: "loading",
+                service: "flovia-bff",
+                ...analyticsStatusBody(),
+              },
+              { status: 503 },
+            ),
+            corsOptions,
           );
         }
         if (analyticsState.status === "failed") {
-          return json(
-            {
-              status: "unavailable",
-              service: "flovia-bff",
-              ...analyticsStatusBody(),
-            },
-            { status: 503 },
+          return wrapResponseWithCors(
+            request,
+            json(
+              {
+                status: "unavailable",
+                service: "flovia-bff",
+                ...analyticsStatusBody(),
+              },
+              { status: 503 },
+            ),
+            corsOptions,
           );
         }
-        return json({
-          status: "ok",
-          service: "flovia-bff",
-          ...analyticsStatusBody(),
-        });
+        return wrapResponseWithCors(
+          request,
+          json({
+            status: "ok",
+            service: "flovia-bff",
+            ...analyticsStatusBody(),
+          }),
+          corsOptions,
+        );
       case "/aeo/x402": {
         // Independent of the analytics read model — served from the discovery store.
         // `service` may be a comma-separated list of candidate hosts; the first
@@ -358,62 +433,100 @@ export const createBffHandler = (
           .split(",")
           .map((value) => value.trim())
           .filter(Boolean);
-        if (hosts.length === 0) return badRequest("Query parameter 'service' is required.");
+        if (hosts.length === 0) {
+          return wrapResponseWithCors(
+            request,
+            badRequest("Query parameter 'service' is required."),
+            corsOptions,
+          );
+        }
         for (const host of hosts) {
           const aggregate = x402Store.getAggregate(host);
-          if (aggregate) return cachedJson(aggregate);
+          if (aggregate) return wrapResponseWithCors(request, cachedJson(aggregate), corsOptions);
         }
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
       default:
         break;
     }
 
     const showcaseResponse = handleShowcaseRoute(request, path);
-    if (showcaseResponse) return showcaseResponse;
+    if (showcaseResponse) {
+      return wrapResponseWithCors(request, showcaseResponse, corsOptions);
+    }
 
     if (!readonlyRoutes.has(path) && customerRoute === null && providerRoute === null) {
-      return notFound(path);
+      return wrapResponseWithCors(request, notFound(path), corsOptions);
     }
 
     const activeDataSource = getReadyDataSource();
     if (!activeDataSource) {
-      return analyticsState.status === "loading"
-        ? analyticsLoading()
-        : analyticsUnavailable(analyticsState.error);
+      return wrapResponseWithCors(
+        request,
+        analyticsState.status === "loading"
+          ? analyticsLoading()
+          : analyticsUnavailable(analyticsState.error),
+        corsOptions,
+      );
     }
 
     switch (path) {
       case "/providers":
-        return cachedJson(activeDataSource.providersList);
+        return wrapResponseWithCors(request, cachedJson(activeDataSource.providersList), corsOptions);
       case "/customers": {
         const serviceId = url.searchParams.get("serviceId");
         if (serviceId) {
-          return cachedJson(activeDataSource.getCustomersByServiceId(serviceId));
+          return wrapResponseWithCors(
+            request,
+            cachedJson(activeDataSource.getCustomersByServiceId(serviceId)),
+            corsOptions,
+          );
         }
-        return cachedJson(
-          activeDataSource.getCustomers(url.searchParams.get("payTo") ?? undefined),
+        return wrapResponseWithCors(
+          request,
+          cachedJson(activeDataSource.getCustomers(url.searchParams.get("payTo") ?? undefined)),
+          corsOptions,
         );
       }
       case "/wallet-usage-graph":
-        return cachedJson(activeDataSource.walletUsageGraph);
+        return wrapResponseWithCors(
+          request,
+          cachedJson(activeDataSource.walletUsageGraph),
+          corsOptions,
+        );
       case "/analytics/services/coingecko/summary":
-        return cachedJson(activeDataSource.serviceSummary);
+        return wrapResponseWithCors(
+          request,
+          cachedJson(activeDataSource.serviceSummary),
+          corsOptions,
+        );
       case "/analytics/services/comparison":
-        return cachedJson(activeDataSource.serviceComparison);
+        return wrapResponseWithCors(
+          request,
+          cachedJson(activeDataSource.serviceComparison),
+          corsOptions,
+        );
       case "/analytics/services/quadrants":
-        return cachedJson(activeDataSource.serviceQuadrants);
+        return wrapResponseWithCors(
+          request,
+          cachedJson(activeDataSource.serviceQuadrants),
+          corsOptions,
+        );
       case "/analytics/routes/summary":
-        return cachedJson(activeDataSource.routeSummary);
+        return wrapResponseWithCors(request, cachedJson(activeDataSource.routeSummary), corsOptions);
       case "/analytics/routes/sankey":
-        return cachedJson(activeDataSource.routeSankey);
+        return wrapResponseWithCors(request, cachedJson(activeDataSource.routeSankey), corsOptions);
       default:
         break;
     }
 
     if (providerRoute) {
       const provider = activeDataSource.getProviderById(providerRoute.providerId);
-      return provider ? cachedJson(provider) : notFound(path);
+      return wrapResponseWithCors(
+        request,
+        provider ? cachedJson(provider) : notFound(path),
+        corsOptions,
+      );
     }
 
     if (customerRoute?.kind === "profile") {
@@ -421,10 +534,10 @@ export const createBffHandler = (
       const profile = activeDataSource.getCustomerProfile(normalizedAddress);
 
       if (!profile) {
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
 
-      return cachedJson(profile);
+      return wrapResponseWithCors(request, cachedJson(profile), corsOptions);
     }
 
     if (customerRoute?.kind === "intelligence") {
@@ -432,10 +545,10 @@ export const createBffHandler = (
       const intelligence = activeDataSource.getCustomerIntelligence(normalizedAddress);
 
       if (!intelligence) {
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
 
-      return cachedJson(intelligence);
+      return wrapResponseWithCors(request, cachedJson(intelligence), corsOptions);
     }
 
     if (customerRoute?.kind === "upsellMetrics") {
@@ -443,10 +556,10 @@ export const createBffHandler = (
       const metrics = activeDataSource.getCustomerUpsellMetrics(normalizedAddress);
 
       if (!metrics) {
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
 
-      return cachedJson(metrics);
+      return wrapResponseWithCors(request, cachedJson(metrics), corsOptions);
     }
 
     if (customerRoute?.kind === "upsellExplanation") {
@@ -454,23 +567,27 @@ export const createBffHandler = (
       const metrics = activeDataSource.getCustomerUpsellMetrics(normalizedAddress);
 
       if (!metrics) {
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
 
       if (!llmService) {
-        return llmUnavailable();
+        return wrapResponseWithCors(request, llmUnavailable(), corsOptions);
       }
 
       try {
         // QVAC may need to download and load a local model on the first request.
         server?.timeout(request, 0);
-        return json(await llmService.generateUpsellExplanation(metrics));
+        return wrapResponseWithCors(
+          request,
+          json(await llmService.generateUpsellExplanation(metrics)),
+          corsOptions,
+        );
       } catch (error) {
         if (error instanceof BffLlmUnavailableError) {
-          return llmUnavailable();
+          return wrapResponseWithCors(request, llmUnavailable(), corsOptions);
         }
         console.error("LLM upsell explanation request failed.", error);
-        return llmFailed(error);
+        return wrapResponseWithCors(request, llmFailed(error), corsOptions);
       }
     }
 
@@ -479,23 +596,31 @@ export const createBffHandler = (
       const profile = activeDataSource.getCustomerProfile(normalizedAddress);
 
       if (!profile) {
-        return notFound(path);
+        return wrapResponseWithCors(request, notFound(path), corsOptions);
       }
 
       const selection = buildWorkflowIntentInputFromProfile(profile);
       const input = toWorkflowIntentInput(selection);
 
       if (!input) {
-        return workflowIntentNoCandidateSessions({
-          address: normalizedAddress,
-          profile,
-          selection,
-          input,
-        });
+        return wrapResponseWithCors(
+          request,
+          workflowIntentNoCandidateSessions({
+            address: normalizedAddress,
+            profile,
+            selection,
+            input,
+          }),
+          corsOptions,
+        );
       }
 
       const unavailableResponse = () =>
-        workflowIntentUnavailable({ address: normalizedAddress, profile, selection, input });
+        wrapResponseWithCors(
+          request,
+          workflowIntentUnavailable({ address: normalizedAddress, profile, selection, input }),
+          corsOptions,
+        );
 
       if (!llmService) {
         return unavailableResponse();
@@ -509,28 +634,36 @@ export const createBffHandler = (
           input,
         });
 
-        return workflowIntentReady({
-          address: normalizedAddress,
-          profile,
-          selection,
-          input,
-          result,
-        });
+        return wrapResponseWithCors(
+          request,
+          workflowIntentReady({
+            address: normalizedAddress,
+            profile,
+            selection,
+            input,
+            result,
+          }),
+          corsOptions,
+        );
       } catch (error) {
         if (error instanceof BffLlmUnavailableError) {
           return unavailableResponse();
         }
         console.error("Workflow intent request failed.", error);
-        return workflowIntentFailed({
-          address: normalizedAddress,
-          profile,
-          selection,
-          input,
-          error,
-        });
+        return wrapResponseWithCors(
+          request,
+          workflowIntentFailed({
+            address: normalizedAddress,
+            profile,
+            selection,
+            input,
+            error,
+          }),
+          corsOptions,
+        );
       }
     }
 
-    return notFound(path);
+    return wrapResponseWithCors(request, notFound(path), corsOptions);
   };
 };
