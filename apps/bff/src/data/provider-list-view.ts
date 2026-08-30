@@ -18,9 +18,11 @@ export type ProviderListView = {
 };
 
 export const deriveProviderListView = (providers: ProviderCatalogResponse): ProviderListView => {
-  const byId = new Map(providers.providers.map((provider) => [provider.providerId, provider]));
+  const activeProviders = providers.providers.filter((provider) => provider.active !== false);
 
-  const lightweightRows = providers.providers.map((provider) => {
+  const byId = new Map(activeProviders.map((provider) => [provider.providerId, provider]));
+
+  const lightweightRows = activeProviders.map((provider) => {
     if (provider.resources === undefined) return provider;
     const { resources, ...rest } = provider;
     return rest;

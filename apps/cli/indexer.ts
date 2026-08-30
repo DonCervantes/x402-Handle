@@ -18,6 +18,14 @@ if (!CONTRACT_ID) {
 
 const POLL_LIMIT = 1000;
 
+const REGISTRY_TOPICS = [
+  'prov_reg', 
+  'prov_upd', 
+  'pay_log', 
+  'prov_off',
+  'prov_on'
+];
+
 type RawProvider = {
   id: bigint;
   owner: string;
@@ -109,6 +117,7 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
     contractId: CONTRACT_ID!,
     fromLedger,
     limit: POLL_LIMIT,
+    topics: REGISTRY_TOPICS,
   });
 
   let providerCount = 0;
@@ -117,13 +126,15 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
 
   for (const ev of events) {
     const kind = ev.topics?.[1];
-    if (kind === "prov_reg" || kind === "prov_upd") {
+    
+    if (kind === "prov_reg" || kind === "prov_upd" || kind === "prov_off" || kind === "prov_on") {
       await upsertProvider(ev.value as RawProvider, ev.timestamp);
       providerCount++;
     } else if (kind === "pay_log") {
       await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
       paymentCount++;
     }
+    
     if (ev.ledger > maxLedger) maxLedger = ev.ledger;
   }
 
