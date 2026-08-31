@@ -130,6 +130,16 @@ The CLI generates market snapshots and customer intelligence by combining CDP x4
 
 ---
 
+## 📋 Provider registration
+
+Want to list a paid API/resource in HANDLE's discovery layer? See
+[`docs/provider-registration.md`](docs/provider-registration.md) for the
+on-chain registry fields, the `.well-known/x402-discovery` format, and the
+Stellar/USDC scope — HANDLE does not index EVM (Base, Polygon) or Solana
+endpoints today.
+
+---
+
 ## ⚡ Quick start
 
 Requirements:
