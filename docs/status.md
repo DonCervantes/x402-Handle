@@ -1,4 +1,7 @@
-# Flovia PoC Status
+> **⚠️ Legacy document.** This file describes the earlier Flovia PoC (Solana/EVM era).
+> The project has since pivoted to **HANDLE / Stellar**. For current architecture, see the [root README](../README.md) and [`docs/FLOVIA-STELLAR.md`](FLOVIA-STELLAR.md).
+
+# Flovia PoC Status (Legacy — Solana/EVM era)
 
 ## Current status
 
