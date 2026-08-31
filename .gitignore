@@ -3,7 +3,6 @@ dist/
 book/
 result
 
-.env
 *.db
 *.sqlite
 *.sqlite3
@@ -51,3 +50,7 @@ packages/*/node_modules/
 docker-data/
 .vercel
 accounts.local.md
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat
