@@ -1,7 +1,8 @@
 // Ticket 3.6 — loguea un pago verificado en el registry on-chain (Soroban).
 // Llamado opcionalmente desde server.ts después de verificar un pago x402.
-// log_payment no requiere auth on-chain (ver contracts/soroban-registry):
-// la protección es por tx_hash único, así que cualquier cuenta puede firmar.
+// log_payment exige que el caller esté en la allowlist del contrato (add_logger)
+// y que firme la invocación (ver contracts/soroban-registry); el publicKey del
+// callerSecret debe estar allowlisted por el admin.
 
 import {
   rpc,
@@ -43,6 +44,7 @@ export async function logPaymentOnChain(
     .addOperation(
       contract.call(
         "log_payment",
+        nativeToScVal(Address.fromString(caller.publicKey()), { type: "address" }),
         nativeToScVal(opts.providerId, { type: "u64" }),
         nativeToScVal(Address.fromString(payment.payer), { type: "address" }),
         nativeToScVal(amountStroops, { type: "u64" }),
