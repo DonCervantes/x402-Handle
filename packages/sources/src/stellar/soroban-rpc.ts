@@ -6,10 +6,10 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
+import { loadStellarNetworkConfig } from "contracts";
 import { networkPassphrase } from "./horizon";
 
-const sorobanUrl =
-  process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
+const sorobanUrl = loadStellarNetworkConfig().sorobanRpcUrl;
 
 export const sorobanRpc = new rpc.Server(sorobanUrl);
 

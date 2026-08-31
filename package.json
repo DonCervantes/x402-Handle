@@ -14,7 +14,8 @@
     "format:check": "biome format .",
     "verify": "bun run check:imports && bun scripts/run-workspace-script.ts verify",
     "test": "bun scripts/run-workspace-script.ts test",
-    "typecheck": "bun scripts/run-workspace-script.ts typecheck"
+    "typecheck": "bun scripts/run-workspace-script.ts typecheck",
+    "indexer:testnet": "bun run --cwd apps/cli indexer:testnet"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",

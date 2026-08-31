@@ -6,6 +6,7 @@
 // esos, devolvemos un error explícito en vez de intentar un fetch que sabemos
 // que va a fallar.
 import { x402Pay } from "@flovia/x402-stellar/client";
+import { loadStellarNetworkConfig } from "contracts";
 import { getStellarProviderById } from "./stellar-providers";
 
 const LIVE_DEMO_PROVIDER_ID = 1;
@@ -47,7 +48,7 @@ export async function runPlaygroundPayment(stellarProviderId: string): Promise<P
   }
 
   const providerUrl = `http://localhost:${process.env.DEMO_PROVIDER_PORT ?? 5402}`;
-  const network = (process.env.STELLAR_NETWORK ?? "testnet") as "testnet" | "public";
+  const { network } = loadStellarNetworkConfig();
 
   try {
     const result = await x402Pay({
