@@ -1,9 +1,12 @@
 import { Horizon, Networks } from "@stellar/stellar-sdk";
+import { loadStellarNetworkConfig } from "contracts";
 
+const { network } = loadStellarNetworkConfig();
 const config = {
-  url: process.env.HORIZON_URL || "https://horizon-testnet.stellar.org",
-  network:
-    process.env.STELLAR_NETWORK === "public" ? Networks.PUBLIC : Networks.TESTNET,
+  url:
+    process.env.HORIZON_URL ||
+    (network === "public" ? "https://horizon.stellar.org" : "https://horizon-testnet.stellar.org"),
+  network: network === "public" ? Networks.PUBLIC : Networks.TESTNET,
 };
 
 export const horizon = new Horizon.Server(config.url, { allowHttp: false });

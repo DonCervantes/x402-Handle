@@ -2,7 +2,12 @@
 // Postgres por apps/cli/indexer.ts) + KYB mock + Trust Score.
 // Deliberadamente separado del data layer legacy (EVM/Solana) en ./postgres-live
 // y ./analytics-source — son dominios distintos, no se mezclan.
-import type { ProviderIntelligence, StatsOverview, StellarProvider } from "contracts";
+import {
+  loadStellarConfig,
+  type ProviderIntelligence,
+  type StatsOverview,
+  type StellarProvider,
+} from "contracts";
 import { computeTrustScore, rankProviders, type RankedProvider, type RankOptions } from "intelligence";
 import { kyb } from "sources";
 const { getKybStatus } = kyb;
@@ -44,21 +49,24 @@ function mapProviderRow(row: ProviderRow): StellarProvider {
 }
 
 export async function listStellarProviders(): Promise<StellarProvider[]> {
+  const { registryContractId } = loadStellarConfig();
   const rows = await Bun.sql<ProviderRow[]>`
     SELECT id, contract_id, provider_id, name, endpoint, price_usdc,
            owner_account, payment_asset, category, active, created_at, last_seen_at
     FROM providers
+    WHERE contract_id = ${registryContractId}
     ORDER BY provider_id ASC
   `;
   return rows.map(mapProviderRow);
 }
 
 export async function getStellarProviderById(id: string): Promise<StellarProvider | null> {
+  const { registryContractId } = loadStellarConfig();
   const rows = await Bun.sql<ProviderRow[]>`
     SELECT id, contract_id, provider_id, name, endpoint, price_usdc,
            owner_account, payment_asset, category, active, created_at, last_seen_at
     FROM providers
-    WHERE id = ${id}
+    WHERE id = ${id} AND contract_id = ${registryContractId}
   `;
   return rows[0] ? mapProviderRow(rows[0]) : null;
 }

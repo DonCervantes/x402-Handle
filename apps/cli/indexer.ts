@@ -8,13 +8,10 @@
  *
  * Requiere en .env: REGISTRY_CONTRACT_ID, SOROBAN_RPC_URL, DATABASE_URL.
  */
+import { loadStellarConfig } from "contracts";
 import { stellar } from "sources";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
-if (!CONTRACT_ID) {
-  console.error("Missing REGISTRY_CONTRACT_ID in .env");
-  process.exit(1);
-}
+const { registryContractId: CONTRACT_ID } = loadStellarConfig();
 
 const POLL_LIMIT = 1000;
 
@@ -103,6 +100,14 @@ async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> 
   `;
 }
 
+async function setProviderActive(providerId: bigint, active: boolean): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = ${active}
+    WHERE id = ${providerRowId(providerId)} AND contract_id = ${CONTRACT_ID}
+  `;
+}
+
 async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
   const fromLedger = await getLastLedger();
   const events = await stellar.getContractEvents({
@@ -116,13 +121,30 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
   let maxLedger = fromLedger;
 
   for (const ev of events) {
+    if (ev.contractId !== CONTRACT_ID) {
+      throw new Error(`Indexer received event for unexpected contract ${ev.contractId}`);
+    }
+    if (ev.topics?.[0] !== "registry") {
+      throw new Error(`Indexer received an event outside the registry namespace from ${CONTRACT_ID}`);
+    }
     const kind = ev.topics?.[1];
     if (kind === "prov_reg" || kind === "prov_upd") {
       await upsertProvider(ev.value as RawProvider, ev.timestamp);
       providerCount++;
+    } else if (kind === "prov_off" || kind === "prov_on") {
+      const providerId = ev.topics?.[2];
+      if (typeof providerId !== "bigint") {
+        throw new Error(`Malformed ${kind} event from ${CONTRACT_ID}`);
+      }
+      await setProviderActive(providerId, kind === "prov_on");
+      providerCount++;
     } else if (kind === "pay_log") {
       await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
       paymentCount++;
+    } else if (typeof kind === "string" && kind.startsWith("prov_")) {
+      throw new Error(`Unsupported registry event ${kind} from ${CONTRACT_ID}`);
+    } else {
+      throw new Error(`Unsupported registry event ${String(kind)} from ${CONTRACT_ID}`);
     }
     if (ev.ledger > maxLedger) maxLedger = ev.ledger;
   }
