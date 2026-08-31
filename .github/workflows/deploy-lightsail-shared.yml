@@ -9,6 +9,10 @@ name: deploy-lightsail-shared
 # - BFF_BEDROCK_REGION
 # - BFF_BEDROCK_MODEL_ID
 # - BFF_BEDROCK_PROMPT_VERSION
+# Optional repository secret for gated LLM / upsell routes (BFF_LLM_API_KEY):
+# when set, the routes require this bearer key and a per-key quota applies;
+# when unset (public demo default), the LLM routes are disabled (403).
+# - BFF_LLM_API_KEY
 #
 # x402 discovery refresh:
 # - The bearer token (BFF_X402_REFRESH_TOKEN) is auto-generated per deploy here,
@@ -288,6 +292,9 @@ jobs:
             BFF_BEDROCK_REGION="${{ secrets.BFF_BEDROCK_REGION }}" \
             BFF_BEDROCK_MODEL_ID="${{ secrets.BFF_BEDROCK_MODEL_ID }}" \
             BFF_BEDROCK_PROMPT_VERSION="${{ secrets.BFF_BEDROCK_PROMPT_VERSION }}" \
+            BFF_LLM_API_KEY="${{ secrets.BFF_LLM_API_KEY }}" \
+            BFF_LLM_QUOTA_MAX="${{ secrets.BFF_LLM_QUOTA_MAX }}" \
+            BFF_LLM_QUOTA_WINDOW_MS="${{ secrets.BFF_LLM_QUOTA_WINDOW_MS }}" \
             MAIN_BFF_ANALYTICS_DATABASE_URL_B64="${main_bff_analytics_database_url_b64}" \
             DEVELOP_BFF_ANALYTICS_DATABASE_URL_B64="${develop_bff_analytics_database_url_b64}" \
             BFF_ANALYTICS_DATABASE_URL_B64="${bff_analytics_database_url_b64}" \

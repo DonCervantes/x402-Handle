@@ -276,6 +276,30 @@ describe("lightsail shared stack", () => {
     );
   });
 
+  test("compose passes the optional LLM api key and quota env to both branches", () => {
+    const compose = read("../../docker-compose.lightsail.yml");
+
+    expect(compose).toContain("BFF_LLM_API_KEY: ${BFF_LLM_API_KEY:-}");
+    expect(compose).toContain("BFF_LLM_QUOTA_MAX: ${BFF_LLM_QUOTA_MAX:-30}");
+    expect(compose).toContain("BFF_LLM_QUOTA_WINDOW_MS: ${BFF_LLM_QUOTA_WINDOW_MS:-60000}");
+  });
+
+  test("deployment passes the optional LLM api key and quota env to stack sync", () => {
+    const workflow = read("../../.github/workflows/deploy-lightsail-shared.yml");
+    const syncScript = read("./lightsail-sync-stack.sh");
+
+    expect(workflow).toContain('BFF_LLM_API_KEY="${{ secrets.BFF_LLM_API_KEY }}"');
+    expect(workflow).toContain('BFF_LLM_QUOTA_MAX="${{ secrets.BFF_LLM_QUOTA_MAX }}"');
+    expect(workflow).toContain('BFF_LLM_QUOTA_WINDOW_MS="${{ secrets.BFF_LLM_QUOTA_WINDOW_MS }}"');
+    expect(syncScript).toContain('print_optional_env_var BFF_LLM_API_KEY "${BFF_LLM_API_KEY:-}"');
+    expect(syncScript).toContain(
+      'print_optional_env_var BFF_LLM_QUOTA_MAX "${BFF_LLM_QUOTA_MAX:-}"',
+    );
+    expect(syncScript).toContain(
+      'print_optional_env_var BFF_LLM_QUOTA_WINDOW_MS "${BFF_LLM_QUOTA_WINDOW_MS:-}"',
+    );
+  });
+
   test("deployment auto-generates the x402 refresh token and passes it to stack sync", () => {
     const workflow = read("../../.github/workflows/deploy-lightsail-shared.yml");
 

@@ -56,6 +56,9 @@ export const unauthorized = (message = "Missing or invalid authorization.") =>
 export const forbidden = (message = "Forbidden.") =>
   json({ error: "forbidden", message }, { status: 403 });
 
+export const rateLimited = (message = "Rate limit exceeded.") =>
+  json({ error: "rate_limited", message }, { status: 429 });
+
 export const analyticsLoading = () =>
   json(
     {

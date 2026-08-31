@@ -46,6 +46,17 @@ import {
 const request = (path: string, init: RequestInit = {}) =>
   new Request(`http://localhost${path}`, init);
 
+const LLM_API_KEY = "test-llm-api-key";
+
+// Authenticated request for gated LLM / upsell customer routes: sets the gate
+// env and sends the key header so the request passes auth (quota still applies).
+const llmAuthedRequest = (path: string, init: RequestInit = {}) => {
+  process.env.BFF_LLM_API_KEY = LLM_API_KEY;
+  const headers = new Headers(init.headers);
+  headers.set("x-llm-api-key", LLM_API_KEY);
+  return request(path, { ...init, headers });
+};
+
 const originalAnalyticsSource = process.env.BFF_ANALYTICS_SOURCE;
 const runtimeMetadata = {
   commitHash: "abc123def456",
@@ -90,6 +101,9 @@ const llmEnvKeys = [
   "BFF_DEPLOY_ID",
   "HOSTNAME",
   "DATABASE_URL",
+  "BFF_LLM_API_KEY",
+  "BFF_LLM_QUOTA_MAX",
+  "BFF_LLM_QUOTA_WINDOW_MS",
 ] as const;
 
 const snapshotLlmEnv = () =>
@@ -731,7 +745,9 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress.toUpperCase()}/llm/upsell-metrics`),
+      llmAuthedRequest(
+        `/customers/${knownCustomerIntelligenceAddress.toUpperCase()}/llm/upsell-metrics`,
+      ),
     );
     const body = await response.json();
     const parsed = validatePhaseBCustomerUpsellMetricsResponse(body);
@@ -747,7 +763,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+      llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
     );
     const body = (await response.json()) as { error: string; message: string };
 
@@ -771,7 +787,7 @@ describe("BFF routes", () => {
 
     try {
       const response = await handler(
-        request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+        llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
       );
       const body = (await response.json()) as { error: string; message: string };
 
@@ -833,7 +849,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler(undefined, llmService);
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+      llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
     );
     const body = await response.json();
     const parsed = validatePhaseBCustomerUpsellExplanationResponse(body);
@@ -890,7 +906,7 @@ describe("BFF routes", () => {
     };
     const handler = createBffHandler(undefined, llmService);
     const timeoutCalls: Array<{ request: Request; seconds: number }> = [];
-    const requestInput = request(
+    const requestInput = llmAuthedRequest(
       `/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`,
     );
     const server = {
@@ -917,7 +933,7 @@ describe("BFF routes", () => {
     );
 
     const response = await handler(
-      request(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
+      llmAuthedRequest(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
     );
     const parsed = validatePhaseBCustomerWorkflowIntentResponse(await response.json());
 
@@ -975,7 +991,7 @@ describe("BFF routes", () => {
     );
 
     const response = await handler(
-      request(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
+      llmAuthedRequest(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
     );
     const parsed = validatePhaseBCustomerWorkflowIntentResponse(await response.json());
 
@@ -1005,12 +1021,91 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request("/customers/0x9999999999999999999999999999999999999999/llm/upsell-metrics"),
+      llmAuthedRequest("/customers/0x9999999999999999999999999999999999999999/llm/upsell-metrics"),
     );
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(404);
     expect(body.error).toBe("not_found");
+  });
+
+  test("rejects llm routes with 403 when no api key is configured", async () => {
+    const handler = createBffHandler();
+
+    const response = await handler(
+      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+    );
+    const body = (await response.json()) as { error: string; message: string };
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe("forbidden");
+    expect(body.message).toContain("BFF_LLM_API_KEY");
+  });
+
+  test("rejects llm routes with 401 when the api key is missing or wrong", async () => {
+    const handler = createBffHandler();
+    process.env.BFF_LLM_API_KEY = LLM_API_KEY;
+
+    const missing = await handler(
+      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+    );
+    const wrong = await handler(
+      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`, {
+        headers: { authorization: "Bearer not-the-key" },
+      }),
+    );
+
+    expect(missing.status).toBe(401);
+    expect(wrong.status).toBe(401);
+    expect((await missing.json()) as { error: string }).toMatchObject({ error: "unauthorized" });
+  });
+
+  test("accepts the api key via authorization bearer header", async () => {
+    const llmService: BffLlmService = {
+      async generateUpsellExplanation() {
+        throw new Error("gate should pass before llm call");
+      },
+      async generateWorkflowIntentExplanation() {
+        throw new Error("not used");
+      },
+    };
+    process.env.BFF_LLM_API_KEY = LLM_API_KEY;
+    const handler = createBffHandler(undefined, llmService);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      const response = await handler(
+        request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`, {
+          headers: { authorization: `Bearer ${LLM_API_KEY}` },
+        }),
+      );
+      // The gate passed and the request reached the (throwing) llm service.
+      expect(response.status).toBe(502);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
+  test("returns 429 when the llm quota is exceeded", async () => {
+    process.env.BFF_LLM_API_KEY = LLM_API_KEY;
+    process.env.BFF_LLM_QUOTA_MAX = "2";
+    process.env.BFF_LLM_QUOTA_WINDOW_MS = "60000";
+    const handler = createBffHandler();
+
+    const first = await handler(
+      llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-metrics`),
+    );
+    const second = await handler(
+      llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-metrics`),
+    );
+    const third = await handler(
+      llmAuthedRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-metrics`),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(429);
+    expect((await third.json()) as { error: string }).toMatchObject({ error: "rate_limited" });
   });
 
   test("serves wallet usage graph with schema validation", async () => {
@@ -2119,7 +2214,7 @@ describe("BFF routes", () => {
         request(`/customers/${knownCustomerIntelligenceAddress}/intelligence`),
       );
       const upsellMetricsResponse = await handler(
-        request(`/customers/${knownCustomerProfileAddress}/llm/upsell-metrics`),
+        llmAuthedRequest(`/customers/${knownCustomerProfileAddress}/llm/upsell-metrics`),
       );
 
       expect(profileResponse.status).toBe(404);

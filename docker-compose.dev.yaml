@@ -24,6 +24,8 @@ services:
       BFF_ANALYTICS_SOURCE: postgres
       BFF_ANALYTICS_DATABASE_URL: postgresql://poc_data:poc_data@postgres:5432/poc_data_test
       BFF_X402_REFRESH_TOKEN: ${BFF_X402_REFRESH_TOKEN:-dev-x402-refresh-token}
+      # Empty by default: LLM / upsell routes are disabled unless a key is set.
+      BFF_LLM_API_KEY: ${BFF_LLM_API_KEY:-}
     develop:
       watch:
         - action: sync

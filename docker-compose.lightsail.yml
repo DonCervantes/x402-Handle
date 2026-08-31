@@ -32,6 +32,11 @@ x-main-bff: &main-bff
     BFF_X402_REFRESH_TOKEN: ${MAIN_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
     # Persist refreshed discovery data on the /data volume so it survives redeploys.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
+    # LLM / upsell routes are gated off (403) unless an API key is configured
+    # (public demo default). Optional repository secret BFF_LLM_API_KEY.
+    BFF_LLM_API_KEY: ${BFF_LLM_API_KEY:-}
+    BFF_LLM_QUOTA_MAX: ${BFF_LLM_QUOTA_MAX:-30}
+    BFF_LLM_QUOTA_WINDOW_MS: ${BFF_LLM_QUOTA_WINDOW_MS:-60000}
     # Fall back to DEVELOP_HITPAY_* when MAIN_HITPAY_* is not configured
     # so the demo HitPay MPP showcase keeps working on the production
     # endpoint without forcing duplicate sandbox secrets.
@@ -76,6 +81,11 @@ x-develop-bff: &develop-bff
     BFF_X402_REFRESH_TOKEN: ${DEVELOP_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
     # Persist refreshed discovery data on the /data volume so it survives redeploys.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
+    # LLM / upsell routes are gated off (403) unless an API key is configured
+    # (public demo default). Optional repository secret BFF_LLM_API_KEY.
+    BFF_LLM_API_KEY: ${BFF_LLM_API_KEY:-}
+    BFF_LLM_QUOTA_MAX: ${BFF_LLM_QUOTA_MAX:-30}
+    BFF_LLM_QUOTA_WINDOW_MS: ${BFF_LLM_QUOTA_WINDOW_MS:-60000}
     HITPAY_API_KEY: ${DEVELOP_HITPAY_API_KEY:-${HITPAY_API_KEY:-}}
     HITPAY_WEBHOOK_SALT: ${DEVELOP_HITPAY_WEBHOOK_SALT:-${HITPAY_WEBHOOK_SALT:-}}
     HITPAY_MPP_ENDPOINT: ${DEVELOP_HITPAY_MPP_ENDPOINT:-${HITPAY_MPP_ENDPOINT:-https://sandbox.mpp.hitpay.dev}}

@@ -112,6 +112,9 @@ export async function getCustomerUpsellExplanation(
   );
 
   if (response.status === 404 || response.status === 503) return null;
+  // LLM routes are gated behind BFF_LLM_API_KEY; treat a disabled (403) or
+  // quota-exceeded (429) route as unavailable so the demo degrades gracefully.
+  if (response.status === 403 || response.status === 429) return null;
   if (!response.ok) {
     throw new Error(
       `Data request failed: ${response.status} ${response.statusText} (/customers/${address}/llm/upsell-explanation)`,
@@ -237,7 +240,9 @@ export async function recommendStellarProviders(
     headers: { accept: "application/json" },
   });
   if (!response.ok) {
-    throw new Error(`Data request failed: ${response.status} ${response.statusText} (/stellar/recommend)`);
+    throw new Error(
+      `Data request failed: ${response.status} ${response.statusText} (/stellar/recommend)`,
+    );
   }
   return (await response.json()) as RankedStellarProvider[];
 }
