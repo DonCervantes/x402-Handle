@@ -7,8 +7,13 @@
  *   bun --env-file=.env apps/cli/indexer.ts --watch    # corre en loop cada 5s
  *
  * Requiere en .env: REGISTRY_CONTRACT_ID, SOROBAN_RPC_URL, DATABASE_URL.
+ *
+ * Los topics reales del contrato ("prov_reg", "prov_upd", "prov_off",
+ * "prov_on", "pay_log") están documentados en registry-events.ts, que es
+ * también donde vive el filtro (con test contra fixture).
  */
 import { stellar } from "sources";
+import { classifyRegistryEvent } from "./registry-events";
 
 const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
 if (!CONTRACT_ID) {
@@ -90,6 +95,20 @@ async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<v
   `;
 }
 
+// prov_off / prov_on no traen el Provider completo (data = ()), sólo el id en
+// topics[2], así que actualizamos únicamente el flag.
+async function setProviderActive(
+  providerId: bigint,
+  active: boolean,
+  ledgerClosedAt: string,
+): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = ${active}, last_seen_at = ${ledgerClosedAt}
+    WHERE id = ${providerRowId(providerId)}
+  `;
+}
+
 async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> {
   const txHashHex = Buffer.from(log.tx_hash).toString("hex");
   await Bun.sql`
@@ -116,11 +135,14 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
   let maxLedger = fromLedger;
 
   for (const ev of events) {
-    const kind = ev.topics?.[1];
-    if (kind === "prov_reg" || kind === "prov_upd") {
+    const classified = classifyRegistryEvent(ev.topics);
+    if (classified.action === "provider_upsert") {
       await upsertProvider(ev.value as RawProvider, ev.timestamp);
       providerCount++;
-    } else if (kind === "pay_log") {
+    } else if (classified.action === "provider_active") {
+      await setProviderActive(classified.providerId, classified.active, ev.timestamp);
+      providerCount++;
+    } else if (classified.action === "payment") {
       await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
       paymentCount++;
     }

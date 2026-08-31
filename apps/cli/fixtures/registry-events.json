@@ -1,0 +1,48 @@
+{
+  "comment": "Eventos del registry con la forma que devuelve sources.getContractEvents tras scValToNative: topics = [Symbol, Symbol, u64]. Los u64 llegan como bigint en runtime; acá van como number por límites de JSON y el test los convierte con BigInt().",
+  "events": [
+    {
+      "ledger": 1200001,
+      "timestamp": "2026-08-20T00:00:05Z",
+      "topics": ["registry", "prov_reg", 1],
+      "expected": { "action": "provider_upsert", "providerId": "1" }
+    },
+    {
+      "ledger": 1200010,
+      "timestamp": "2026-08-20T00:01:00Z",
+      "topics": ["registry", "prov_upd", 1],
+      "expected": { "action": "provider_upsert", "providerId": "1" }
+    },
+    {
+      "ledger": 1200020,
+      "timestamp": "2026-08-20T00:02:00Z",
+      "topics": ["registry", "prov_off", 2],
+      "expected": { "action": "provider_active", "providerId": "2", "active": false }
+    },
+    {
+      "ledger": 1200030,
+      "timestamp": "2026-08-20T00:03:00Z",
+      "topics": ["registry", "prov_on", 2],
+      "expected": { "action": "provider_active", "providerId": "2", "active": true }
+    },
+    {
+      "ledger": 1200040,
+      "timestamp": "2026-08-20T00:04:00Z",
+      "topics": ["registry", "pay_log", 3],
+      "expected": { "action": "payment", "providerId": "3" }
+    },
+    {
+      "ledger": 1200050,
+      "timestamp": "2026-08-20T00:05:00Z",
+      "topics": ["otro_contrato", "transfer", 9],
+      "expected": { "action": "ignored" }
+    },
+    {
+      "ledger": 1200060,
+      "timestamp": "2026-08-20T00:06:00Z",
+      "topics": ["registry", "provider_registered", 4],
+      "expected": { "action": "ignored" },
+      "comment": "nombre largo del doc viejo: NO existe on-chain, debe ignorarse"
+    }
+  ]
+}

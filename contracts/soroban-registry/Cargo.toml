@@ -3,7 +3,7 @@ name = "flovia-registry"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Flovia provider registry + payment log on Soroban"
+description = "HANDLE provider registry + payment log on Soroban (package rename pending, see #29)"
 
 [lib]
 crate-type = ["cdylib"]
