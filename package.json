@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "check:imports": "bun scripts/check-import-boundaries.ts",
-    "dev:docker": "docker compose -f docker-compose.yml -f docker-compose.dev.yaml up --watch --build",
+    "dev:docker": "node init && docker compose -f docker-compose.yml -f docker-compose.dev.yaml up --watch --build",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "verify": "bun run check:imports && bun scripts/run-workspace-script.ts verify",

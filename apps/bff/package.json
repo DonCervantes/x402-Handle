@@ -8,7 +8,7 @@
     "bun": ">=1.3.13"
   },
   "scripts": {
-    "start": "bun --env-file=../../.env src/server.ts",
+    "start": "node init && bun --env-file=../../.env src/server.ts",
     "analytics:snapshot": "bun --env-file=../../.env scripts/generate-analytics-snapshot.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
