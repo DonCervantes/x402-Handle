@@ -26,8 +26,8 @@ El indexer de Flovia (`apps/cli/indexer.ts`) consume estos eventos.
 ## Build
 
 ```bash
-cd code/soroban-registry
-cargo build --target wasm32-unknown-unknown --release
+cd contracts/soroban-registry
+cargo build --target wasm32v1-none --release
 # o:
 stellar contract build
 ```
@@ -42,12 +42,18 @@ cargo test
 
 ```bash
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/flovia_registry.wasm \
+  --wasm target/wasm32v1-none/release/flovia_registry.wasm \
   --source <admin-secret> \
   --network testnet
 ```
 
-Guardar el contract ID en `.env` como `REGISTRY_CONTRACT_ID`.
+**Testnet Contract Deployment:**
+- **Contract ID:** `CDKEIUVYAYVTPVVXLYI44R6QUM7RXOFMNFMBWBJRRAHUZ7DDCOK4UYWD`
+- **WASM Hash:** `a3e2a7d6852cdebf4a286738ae0ea59aa21e4e5de17bf29d0199ab678ef09da8`
+- **Stellar Expert:** [Contract Link](https://stellar.expert/explorer/testnet/contract/CDKEIUVYAYVTPVVXLYI44R6QUM7RXOFMNFMBWBJRRAHUZ7DDCOK4UYWD)
+- **Stellar Lab:** [Contract Link](https://lab.stellar.org/r/testnet/contract/CDKEIUVYAYVTPVVXLYI44R6QUM7RXOFMNFMBWBJRRAHUZ7DDCOK4UYWD)
+
+Guardar el contract ID en `.env.example` como `REGISTRY_CONTRACT_ID`.
 
 ## Inicializar
 

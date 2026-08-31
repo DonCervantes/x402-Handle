@@ -364,11 +364,10 @@ impl FloviaRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, testutils::Ledger, BytesN, Env, String, Symbol};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger, testutils::MockAuth, testutils::MockAuthInvoke, BytesN, Env, IntoVal, String, Symbol};
 
     fn setup() -> (Env, FloviaRegistryClient<'static>, Address) {
         let env = Env::default();
-        env.mock_all_auths();
         let admin = Address::generate(&env);
         let contract_id = env.register_contract(None, FloviaRegistry);
         let client = FloviaRegistryClient::new(&env, &contract_id);
@@ -377,21 +376,35 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "HostError: Error(Contract, #2)")]
+    fn double_initialize_panics() {
+        let (_env, client, admin) = setup();
+        client.initialize(&admin);
+    }
+
+    #[test]
     fn registers_and_reads_provider() {
         let (env, client, _admin) = setup();
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[1u8; 32]);
+        let name = String::from_str(&env, "FX Rates Oracle");
+        let endpoint = String::from_str(&env, "https://fx.example.com/rate");
+        let price = 50_000u64;
+        let category = Symbol::new(&env, "fx");
 
-        let id = client.register_provider(
-            &owner,
-            &String::from_str(&env, "FX Rates Oracle"),
-            &String::from_str(&env, "https://fx.example.com/rate"),
-            &50_000u64,
-            &token,
-            &meta,
-            &Symbol::new(&env, "fx"),
-        );
+        let id = client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "register_provider",
+                    args: (owner.clone(), name.clone(), endpoint.clone(), price, token.clone(), meta.clone(), category.clone()).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .register_provider(&owner, &name, &endpoint, &price, &token, &meta, &category);
+
         assert_eq!(id, 1);
         let p = client.get_provider(&id);
         assert_eq!(p.id, 1);
@@ -400,77 +413,142 @@ mod test {
         assert_eq!(client.provider_count(), 1);
     }
 
+    fn setup_provider(env: &Env, client: &FloviaRegistryClient<'static>) -> (u64, Address, Address, BytesN<32>) {
+        let owner = Address::generate(env);
+        let token = Address::generate(env);
+        let meta = BytesN::from_array(env, &[0u8; 32]);
+        let name = String::from_str(env, "X");
+        let endpoint = String::from_str(env, "https://x.io");
+        let price = 10u64;
+        let category = Symbol::new(env, "data");
+
+        let id = client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "register_provider",
+                    args: (owner.clone(), name.clone(), endpoint.clone(), price, token.clone(), meta.clone(), category.clone()).into_val(env),
+                    sub_invokes: &[],
+                },
+            }])
+            .register_provider(&owner, &name, &endpoint, &price, &token, &meta, &category);
+
+        (id, owner, token, meta)
+    }
+
     #[test]
     fn updates_provider() {
         let (env, client, _) = setup();
-        let owner = Address::generate(&env);
-        let token = Address::generate(&env);
-        let meta = BytesN::from_array(&env, &[0u8; 32]);
-        let id = client.register_provider(
-            &owner,
-            &String::from_str(&env, "X"),
-            &String::from_str(&env, "https://x.io"),
-            &10u64,
-            &token,
-            &meta,
-            &Symbol::new(&env, "data"),
-        );
+        let (id, owner, _token, _meta) = setup_provider(&env, &client);
 
         let new_meta = BytesN::from_array(&env, &[9u8; 32]);
-        client.update_provider(
-            &id,
-            &20u64,
-            &String::from_str(&env, "https://x.io/v2"),
-            &new_meta,
-        );
+        let new_price = 20u64;
+        let new_endpoint = String::from_str(&env, "https://x.io/v2");
+
+        client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "update_provider",
+                    args: (id, new_price, new_endpoint.clone(), new_meta.clone()).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .update_provider(&id, &new_price, &new_endpoint, &new_meta);
 
         let p = client.get_provider(&id);
         assert_eq!(p.price_stroops, 20);
     }
 
     #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn non_owner_cannot_update() {
+        let (env, client, _) = setup();
+        let (id, _owner, _token, _meta) = setup_provider(&env, &client);
+
+        let new_meta = BytesN::from_array(&env, &[9u8; 32]);
+        let new_price = 20u64;
+        let new_endpoint = String::from_str(&env, "https://x.io/v2");
+
+        client.update_provider(&id, &new_price, &new_endpoint, &new_meta);
+    }
+
+    #[test]
     fn deactivates_and_activates() {
         let (env, client, _) = setup();
-        let owner = Address::generate(&env);
-        let token = Address::generate(&env);
-        let meta = BytesN::from_array(&env, &[0u8; 32]);
-        let id = client.register_provider(
-            &owner,
-            &String::from_str(&env, "X"),
-            &String::from_str(&env, "https://x.io"),
-            &10u64,
-            &token,
-            &meta,
-            &Symbol::new(&env, "data"),
-        );
-        client.deactivate(&id);
+        let (id, owner, _token, _meta) = setup_provider(&env, &client);
+
+        client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "deactivate",
+                    args: (id,).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .deactivate(&id);
+
         assert_eq!(client.get_provider(&id).active, false);
-        client.activate(&id);
+
+        client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "activate",
+                    args: (id,).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .activate(&id);
+
         assert_eq!(client.get_provider(&id).active, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn non_owner_cannot_deactivate() {
+        let (env, client, _) = setup();
+        let (id, _owner, _token, _meta) = setup_provider(&env, &client);
+
+        client.deactivate(&id);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn non_owner_cannot_activate() {
+        let (env, client, _) = setup();
+        let (id, owner, _token, _meta) = setup_provider(&env, &client);
+
+        client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "deactivate",
+                    args: (id,).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .deactivate(&id);
+
+        client.activate(&id);
     }
 
     #[test]
     fn logs_payment_and_rejects_duplicate() {
         let (env, client, _) = setup();
-        let owner = Address::generate(&env);
-        let payer = Address::generate(&env);
-        let token = Address::generate(&env);
-        let meta = BytesN::from_array(&env, &[0u8; 32]);
-        let id = client.register_provider(
-            &owner,
-            &String::from_str(&env, "X"),
-            &String::from_str(&env, "https://x.io"),
-            &10u64,
-            &token,
-            &meta,
-            &Symbol::new(&env, "data"),
-        );
+        let (id, _owner, _token, _meta) = setup_provider(&env, &client);
 
+        let payer = Address::generate(&env);
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
         let pid1 = client.log_payment(&id, &payer, &50_000u64, &tx_hash);
         assert_eq!(pid1, 1);
 
-        // Duplicado debe fallar
         let result = client.try_log_payment(&id, &payer, &50_000u64, &tx_hash);
         assert!(result.is_err());
     }
@@ -482,15 +560,22 @@ mod test {
         let meta = BytesN::from_array(&env, &[0u8; 32]);
         for i in 0..5 {
             let owner = Address::generate(&env);
-            let _ = client.register_provider(
-                &owner,
-                &String::from_str(&env, "P"),
-                &String::from_str(&env, "https://p"),
-                &(10 + i as u64),
-                &token,
-                &meta,
-                &Symbol::new(&env, "data"),
-            );
+            let name = String::from_str(&env, "P");
+            let endpoint = String::from_str(&env, "https://p");
+            let price = 10 + i as u64;
+            let category = Symbol::new(&env, "data");
+
+            let _ = client
+                .mock_auths(&[MockAuth {
+                    address: &owner,
+                    invoke: &MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "register_provider",
+                        args: (owner.clone(), name.clone(), endpoint.clone(), price, token.clone(), meta.clone(), category.clone()).into_val(&env),
+                        sub_invokes: &[],
+                    },
+                }])
+                .register_provider(&owner, &name, &endpoint, &price, &token, &meta, &category);
         }
         let list = client.list_providers(&1, &5);
         assert_eq!(list.len(), 5);
@@ -500,18 +585,7 @@ mod test {
     fn ledger_timestamp_used() {
         let (env, client, _) = setup();
         env.ledger().with_mut(|li| li.timestamp = 1_700_000_000);
-        let owner = Address::generate(&env);
-        let token = Address::generate(&env);
-        let meta = BytesN::from_array(&env, &[0u8; 32]);
-        let id = client.register_provider(
-            &owner,
-            &String::from_str(&env, "X"),
-            &String::from_str(&env, "https://x.io"),
-            &10u64,
-            &token,
-            &meta,
-            &Symbol::new(&env, "data"),
-        );
+        let (id, _owner, _token, _meta) = setup_provider(&env, &client);
         let p = client.get_provider(&id);
         assert_eq!(p.created_at, 1_700_000_000);
     }
