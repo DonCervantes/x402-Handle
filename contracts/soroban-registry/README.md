@@ -2,6 +2,10 @@
 
 > Registry on-chain de proveedores + log de pagos. Es el "anchor" de identidad y reputación de Flovia.
 
+## Stellar Public release gate
+
+A Public deployment is blocked until the [Stellar mainnet go-live checklist](../../docs/stellar-mainnet-go-live-checklist.md) has a signed `GO` decision. In particular, do not deploy while `log_payment` authorization, pause/admin recovery, TTL persistence, Testnet evidence, or WASM verification is unresolved. Issue [#41](https://github.com/DonCervantes/x402-Handle/issues/41) tracks the approval and any explicit waivers.
+
 ## Qué hace
 
 - **`register_provider(...)`** — un proveedor registra su servicio en el catálogo público.

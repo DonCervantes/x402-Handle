@@ -7,10 +7,10 @@
     "node": ">=20.9"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node init && next dev",
     "bake:geo": "cd ../cli && bun run geo:bake",
-    "build": "next build",
-    "start": "next start",
+    "build": "node init && next build",
+    "start": "node init && next start",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "verify:geo-bake-fresh": "bun scripts/check-geo-bake-fresh.ts",
