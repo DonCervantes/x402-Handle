@@ -1,4 +1,7 @@
-# Flovia PoC Frontend
+> **⚠️ Legacy document.** This file describes the earlier Flovia PoC frontend (Solana/EVM era).
+> The project has since pivoted to **HANDLE / Stellar**. For current architecture, see the [root README](../../README.md).
+
+# Flovia PoC Frontend (Legacy — Solana/EVM era)
 
 This is a prototype UI for x402 Co-usage Discovery, built with Next.js 15 (App Router), React 19, TypeScript, and Tailwind CSS v4.
 
