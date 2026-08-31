@@ -3,7 +3,12 @@
 // Deliberadamente separado del data layer legacy (EVM/Solana) en ./postgres-live
 // y ./analytics-source — son dominios distintos, no se mezclan.
 import type { ProviderIntelligence, StatsOverview, StellarProvider } from "contracts";
-import { computeTrustScore, rankProviders, type RankedProvider, type RankOptions } from "intelligence";
+import {
+  computeTrustScore,
+  rankProviders,
+  type RankedProvider,
+  type RankOptions,
+} from "intelligence";
 import { kyb } from "sources";
 const { getKybStatus } = kyb;
 
@@ -103,20 +108,43 @@ async function getFinancialStats(providerId: string): Promise<FinancialStats> {
 }
 
 /**
- * Disputas/incidentes reportados. No hay tabla de disputas en el POC (no hay
- * mecanismo de reporte todavía — roadmap v2), así que siempre es 0. Se deja
- * explícito en vez de inventar un valor para no falsear el Trust Score.
+ * Disputes/incidentes del provider, espejados por apps/cli/indexer.ts desde
+ * los eventos del contrato de escrow (contracts/soroban-escrow): una disputa
+ * por cada escrow con disputed_at no nulo del provider (lifetime).
+ *
+ * Este es el input real del claimsFactor del Trust Score — antes de escrow
+ * no existía mecanismo de disputa y la función devolvía 0 (issue #14).
+ *
+ * El escrow está anclado a la payout address del provider (el `destination`
+ * del challenge x402), que el indexer une con providers.owner_account.
+ * Si la tabla aún no existe (deploy sin migración 020) o el indexer de escrow
+ * no está activo, se devuelve 0 como en v1: sin señal, no penalizar.
  */
-function getDisputeCount(_providerId: string): number {
-  return 0;
+async function getDisputeCount(providerRowId: string): Promise<number> {
+  try {
+    const [row] = await Bun.sql<Array<{ count: string | number }>>`
+      SELECT COUNT(*) AS count
+      FROM escrows e
+      JOIN providers p ON p.owner_account = e.provider_account
+      WHERE p.id = ${providerRowId}
+        AND e.disputed_at IS NOT NULL
+    `;
+    return Number(row?.count ?? 0);
+  } catch (err) {
+    console.warn("[stellar-providers] escrow disputes unavailable, defaulting to 0:", err);
+    return 0;
+  }
 }
 
 export async function getProviderIntelligence(id: string): Promise<ProviderIntelligence | null> {
   const provider = await getStellarProviderById(id);
   if (!provider) return null;
 
-  const [kyb, financial] = await Promise.all([getKybStatus(id), getFinancialStats(id)]);
-  const disputeCount = getDisputeCount(id);
+  const [kyb, financial, disputeCount] = await Promise.all([
+    getKybStatus(id),
+    getFinancialStats(id),
+    getDisputeCount(id),
+  ]);
 
   const trustScore = computeTrustScore({
     registeredAt: new Date(provider.createdAt),
@@ -158,7 +186,10 @@ export async function recommendStellarProviders(opts: RankOptions): Promise<Rank
       return intelligence ? { provider, trustScore: intelligence.trustScore } : null;
     }),
   );
-  return rankProviders(candidates.filter((c): c is NonNullable<typeof c> => c !== null), opts);
+  return rankProviders(
+    candidates.filter((c): c is NonNullable<typeof c> => c !== null),
+    opts,
+  );
 }
 
 /**

@@ -13,6 +13,18 @@ export type {
 } from "./sponsorship";
 export type { OnChainLogOpts } from "./onchain-log";
 export {
+  escrowApprove,
+  escrowDispute,
+  escrowLock,
+  escrowRefund,
+  escrowRelease,
+  escrowResolve,
+  paymentRefFromTxHash,
+  setEscrowPolicy,
+  usdcToStroops,
+} from "./escrow";
+export type { EscrowContractOpts } from "./escrow";
+export {
   X402_VERSION,
   X402ChallengeSchema,
 } from "./types";
