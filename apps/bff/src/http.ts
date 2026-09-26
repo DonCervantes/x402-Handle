@@ -60,23 +60,23 @@ const isPromiseLike = <T>(value: T | Promise<T>): value is Promise<T> =>
 
 type AnalyticsLoadState =
   | {
-      status: "loading";
-      promise: Promise<BffAnalyticsDataSource>;
-      dataSource?: undefined;
-      error?: undefined;
-    }
+    status: "loading";
+    promise: Promise<BffAnalyticsDataSource>;
+    dataSource?: undefined;
+    error?: undefined;
+  }
   | {
-      status: "ready" | "fallback";
-      promise: Promise<BffAnalyticsDataSource>;
-      dataSource: BffAnalyticsDataSource & ProviderListView;
-      error?: string;
-    }
+    status: "ready" | "fallback";
+    promise: Promise<BffAnalyticsDataSource>;
+    dataSource: BffAnalyticsDataSource & ProviderListView;
+    error?: string;
+  }
   | {
-      status: "failed";
-      promise: Promise<BffAnalyticsDataSource>;
-      dataSource?: undefined;
-      error: string;
-    };
+    status: "failed";
+    promise: Promise<BffAnalyticsDataSource>;
+    dataSource?: undefined;
+    error: string;
+  };
 
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
@@ -185,8 +185,13 @@ export const createBffHandler = (
 
   void preloadAnalytics();
 
+  const isProduction = () => (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+
   const getReadyDataSource = () => {
-    if (analyticsState.status === "ready" || analyticsState.status === "fallback") {
+    if (analyticsState.status === "ready") {
+      return analyticsState.dataSource;
+    }
+    if (analyticsState.status === "fallback" && !isProduction()) {
       return analyticsState.dataSource;
     }
     return null;
@@ -196,6 +201,9 @@ export const createBffHandler = (
     const body: Record<string, string | null> = {
       analyticsStatus: analyticsState.status,
     };
+    if (analyticsState.status === "fallback") {
+      body.analyticsSource = "fixture";
+    }
     return body;
   };
 
