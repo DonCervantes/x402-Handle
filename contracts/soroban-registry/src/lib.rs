@@ -2,11 +2,13 @@
 //! Flovia Registry — On-chain registry of providers + payment log.
 //!
 //! Storage layout:
-//!   - DataKey::Admin               → Address (admin que puede pausar globalmente)
-//!   - DataKey::ProviderCounter     → u64 (auto-increment de provider_id)
-//!   - DataKey::Provider(u64)       → Provider
-//!   - DataKey::PaymentCounter      → u64
-//!   - DataKey::Payment(u64)        → PaymentLog
+//!   - DataKey::Admin                  → Address (admin que puede pausar globalmente y rotar)
+//!   - DataKey::Paused                 → bool (emergency stop switch)
+//!   - DataKey::LoggerAllowlist(Addr)  → bool (authorized payment logging middleware/oracle)
+//!   - DataKey::ProviderCounter        → u64 (auto-increment de provider_id)
+//!   - DataKey::Provider(u64)          → Provider
+//!   - DataKey::PaymentCounter         → u64
+//!   - DataKey::Payment(u64)           → PaymentLog
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
 //!
 //! Events:
@@ -14,11 +16,36 @@
 //!   ("registry", "provider_updated", id)           data = Provider
 //!   ("registry", "provider_deactivated", id)       data = ()
 //!   ("registry", "payment_logged", provider_id)    data = PaymentLog
+//!   ("registry", "paused")                         data = ()
+//!   ("registry", "unpaused")                       data = ()
+//!   ("registry", "adm_xfer")                       data = new_admin Address
+//!   ("registry", "log_allow")                      data = (logger Address, allowed bool)
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, panic_with_error,
+    contract, contracterror, contractimpl, contracttype, panic_with_error,
     symbol_short, vec, Address, BytesN, Env, String, Symbol, Vec,
 };
+
+// ───────────────────────────── TTL Constants
+
+const DAY_IN_LEDGERS: u32 = 17_280;
+const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS; // 518,400 ledgers (~30 days)
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
+const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+}
 
 // ───────────────────────────── Errors
 
@@ -32,6 +59,7 @@ pub enum Error {
     NotFound             = 4,
     PaymentAlreadyLogged = 5,
     InvalidArgument      = 6,
+    Paused               = 7,
 }
 
 // ───────────────────────────── Types
@@ -67,6 +95,8 @@ pub struct PaymentLog {
 #[derive(Clone)]
 enum DataKey {
     Admin,
+    Paused,
+    LoggerAllowlist(Address),
     ProviderCounter,
     Provider(u64),
     PaymentCounter,
@@ -88,15 +118,78 @@ impl FloviaRegistry {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
+        extend_instance_ttl(&env);
     }
 
     pub fn admin(env: Env) -> Address {
+        extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    pub fn pause(env: Env) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &true);
+        extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("paused")),
+            (),
+        );
+    }
+
+    pub fn unpause(env: Env) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &false);
+        extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("unpaused")),
+            (),
+        );
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        extend_instance_ttl(&env);
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+    }
+
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("adm_xfer")),
+            new_admin,
+        );
+    }
+
+    pub fn set_logger_allowed(env: Env, logger: Address, allowed: bool) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        let key = DataKey::LoggerAllowlist(logger.clone());
+        env.storage().persistent().set(&key, &allowed);
+        extend_persistent_ttl(&env, &key);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("log_allow")),
+            (logger, allowed),
+        );
+    }
+
+    pub fn is_logger_allowed(env: Env, logger: Address) -> bool {
+        let key = DataKey::LoggerAllowlist(logger);
+        if let Some(allowed) = env.storage().persistent().get(&key) {
+            extend_persistent_ttl(&env, &key);
+            allowed
+        } else {
+            false
+        }
     }
 
     // ─── Provider management ───────────────────────────────────
@@ -113,6 +206,9 @@ impl FloviaRegistry {
         metadata_hash: BytesN<32>,
         category: Symbol,
     ) -> u64 {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(&env, Error::Paused);
+        }
         owner.require_auth();
 
         if name.len() == 0 || endpoint.len() == 0 {
@@ -141,8 +237,12 @@ impl FloviaRegistry {
             active: true,
         };
 
-        env.storage().persistent().set(&DataKey::Provider(counter), &provider);
+        let prov_key = DataKey::Provider(counter);
+        env.storage().persistent().set(&prov_key, &provider);
+        extend_persistent_ttl(&env, &prov_key);
+
         env.storage().instance().set(&DataKey::ProviderCounter, &counter);
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_reg"), counter),
@@ -160,10 +260,14 @@ impl FloviaRegistry {
         endpoint: String,
         metadata_hash: BytesN<32>,
     ) {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(&env, Error::Paused);
+        }
+        let prov_key = DataKey::Provider(provider_id);
         let mut p: Provider = env
             .storage()
             .persistent()
-            .get(&DataKey::Provider(provider_id))
+            .get(&prov_key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
 
         p.owner.require_auth();
@@ -173,7 +277,8 @@ impl FloviaRegistry {
         p.metadata_hash = metadata_hash;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().set(&prov_key, &p);
+        extend_persistent_ttl(&env, &prov_key);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_upd"), provider_id),
@@ -183,10 +288,14 @@ impl FloviaRegistry {
 
     /// Marca como inactivo. Requiere firma del owner.
     pub fn deactivate(env: Env, provider_id: u64) {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(&env, Error::Paused);
+        }
+        let prov_key = DataKey::Provider(provider_id);
         let mut p: Provider = env
             .storage()
             .persistent()
-            .get(&DataKey::Provider(provider_id))
+            .get(&prov_key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
 
         p.owner.require_auth();
@@ -194,7 +303,8 @@ impl FloviaRegistry {
         p.active = false;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().set(&prov_key, &p);
+        extend_persistent_ttl(&env, &prov_key);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_off"), provider_id),
@@ -204,10 +314,14 @@ impl FloviaRegistry {
 
     /// Reactiva un provider previamente desactivado. Requiere firma del owner.
     pub fn activate(env: Env, provider_id: u64) {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(&env, Error::Paused);
+        }
+        let prov_key = DataKey::Provider(provider_id);
         let mut p: Provider = env
             .storage()
             .persistent()
-            .get(&DataKey::Provider(provider_id))
+            .get(&prov_key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
 
         p.owner.require_auth();
@@ -215,7 +329,8 @@ impl FloviaRegistry {
         p.active = true;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().set(&prov_key, &p);
+        extend_persistent_ttl(&env, &prov_key);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_on"), provider_id),
@@ -226,13 +341,18 @@ impl FloviaRegistry {
     // ─── Reads ──────────────────────────────────────────────────
 
     pub fn get_provider(env: Env, provider_id: u64) -> Provider {
-        env.storage()
+        let prov_key = DataKey::Provider(provider_id);
+        let p: Provider = env
+            .storage()
             .persistent()
-            .get(&DataKey::Provider(provider_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound))
+            .get(&prov_key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
+        extend_persistent_ttl(&env, &prov_key);
+        p
     }
 
     pub fn provider_count(env: Env) -> u64 {
+        extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::ProviderCounter)
@@ -248,11 +368,13 @@ impl FloviaRegistry {
         let mut out: Vec<Provider> = vec![&env];
         let mut id = from_id;
         while id <= to_id {
+            let prov_key = DataKey::Provider(id);
             if let Some(p) = env
                 .storage()
                 .persistent()
-                .get::<DataKey, Provider>(&DataKey::Provider(id))
+                .get::<DataKey, Provider>(&prov_key)
             {
+                extend_persistent_ttl(&env, &prov_key);
                 out.push_back(p);
             }
             id += 1;
@@ -262,27 +384,30 @@ impl FloviaRegistry {
 
     // ─── Payment log ────────────────────────────────────────────
 
-    /// Loguea un pago. Cualquiera puede llamar; la protección es
-    /// la unicidad de `tx_hash` (replay-proof).
-    /// En v2: restringir a llamadores autorizados (oracle, provider's middleware).
-    pub fn log_payment(
-        env: Env,
+    fn internal_log_payment(
+        env: &Env,
         provider_id: u64,
         payer: Address,
         amount: u64,
         tx_hash: BytesN<32>,
     ) -> u64 {
+        if Self::is_paused(env.clone()) {
+            panic_with_error!(env, Error::Paused);
+        }
+
         // El provider debe existir
-        let provider: Provider = env
+        let prov_key = DataKey::Provider(provider_id);
+        let _provider: Provider = env
             .storage()
             .persistent()
-            .get(&DataKey::Provider(provider_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
+            .get(&prov_key)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotFound));
+        extend_persistent_ttl(env, &prov_key);
 
         // Replay protection
         let consumed_key = DataKey::TxConsumed(tx_hash.clone());
         if env.storage().persistent().has(&consumed_key) {
-            panic_with_error!(&env, Error::PaymentAlreadyLogged);
+            panic_with_error!(env, Error::PaymentAlreadyLogged);
         }
 
         let mut counter: u64 = env
@@ -301,29 +426,65 @@ impl FloviaRegistry {
             timestamp: env.ledger().timestamp(),
         };
 
-        env.storage().persistent().set(&DataKey::Payment(counter), &log);
+        let pay_key = DataKey::Payment(counter);
+        env.storage().persistent().set(&pay_key, &log);
+        extend_persistent_ttl(env, &pay_key);
+
         env.storage().persistent().set(&consumed_key, &true);
+        extend_persistent_ttl(env, &consumed_key);
+
         env.storage().instance().set(&DataKey::PaymentCounter, &counter);
+        extend_instance_ttl(env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
             log.clone(),
         );
 
-        // silenciar warning por unused
-        let _ = provider;
-
         counter
     }
 
+    /// Loguea un pago firmado directamente por el payer.
+    pub fn log_payment(
+        env: Env,
+        provider_id: u64,
+        payer: Address,
+        amount: u64,
+        tx_hash: BytesN<32>,
+    ) -> u64 {
+        payer.require_auth();
+        Self::internal_log_payment(&env, provider_id, payer, amount, tx_hash)
+    }
+
+    /// Loguea un pago firmado por un logger autorizado (middleware / oracle).
+    pub fn log_payment_as_logger(
+        env: Env,
+        logger: Address,
+        provider_id: u64,
+        payer: Address,
+        amount: u64,
+        tx_hash: BytesN<32>,
+    ) -> u64 {
+        logger.require_auth();
+        if !Self::is_logger_allowed(env.clone(), logger) {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        Self::internal_log_payment(&env, provider_id, payer, amount, tx_hash)
+    }
+
     pub fn get_payment(env: Env, payment_id: u64) -> PaymentLog {
-        env.storage()
+        let pay_key = DataKey::Payment(payment_id);
+        let log: PaymentLog = env
+            .storage()
             .persistent()
-            .get(&DataKey::Payment(payment_id))
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound))
+            .get(&pay_key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
+        extend_persistent_ttl(&env, &pay_key);
+        log
     }
 
     pub fn payment_count(env: Env) -> u64 {
+        extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::PaymentCounter)
@@ -344,11 +505,13 @@ impl FloviaRegistry {
         let mut out: Vec<PaymentLog> = vec![&env];
         let mut id = from_id;
         while id <= to_id {
+            let pay_key = DataKey::Payment(id);
             if let Some(p) = env
                 .storage()
                 .persistent()
-                .get::<DataKey, PaymentLog>(&DataKey::Payment(id))
+                .get::<DataKey, PaymentLog>(&pay_key)
             {
+                extend_persistent_ttl(&env, &pay_key);
                 if p.provider_id == provider_id {
                     out.push_back(p);
                 }
@@ -514,5 +677,97 @@ mod test {
         );
         let p = client.get_provider(&id);
         assert_eq!(p.created_at, 1_700_000_000);
+    }
+
+    #[test]
+    fn pause_and_unpause_behavior() {
+        let (env, client, _admin) = setup();
+        assert_eq!(client.is_paused(), false);
+
+        client.pause();
+        assert_eq!(client.is_paused(), true);
+
+        let owner = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+
+        // When paused, register_provider must fail
+        let res = client.try_register_provider(
+            &owner,
+            &String::from_str(&env, "Blocked"),
+            &String::from_str(&env, "https://blocked.io"),
+            &100u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+        assert!(res.is_err());
+
+        // Unpause restores normal operation
+        client.unpause();
+        assert_eq!(client.is_paused(), false);
+
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "Allowed"),
+            &String::from_str(&env, "https://allowed.io"),
+            &100u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+        assert_eq!(id, 1);
+    }
+
+    #[test]
+    fn transfer_admin_updates_admin() {
+        let (env, client, admin) = setup();
+        assert_eq!(client.admin(), admin);
+
+        let new_admin = Address::generate(&env);
+        client.transfer_admin(&new_admin);
+        assert_eq!(client.admin(), new_admin);
+
+        // New admin can pause
+        client.pause();
+        assert_eq!(client.is_paused(), true);
+    }
+
+    #[test]
+    fn logger_allowlist_and_payment_logging() {
+        let (env, client, _admin) = setup();
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "Service"),
+            &String::from_str(&env, "https://service.io"),
+            &1000u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "api"),
+        );
+
+        let logger = Address::generate(&env);
+        assert_eq!(client.is_logger_allowed(&logger), false);
+
+        // Disallowed logger attempt fails
+        let tx1 = BytesN::from_array(&env, &[11u8; 32]);
+        let err_res = client.try_log_payment_as_logger(&logger, &id, &payer, &1000u64, &tx1);
+        assert!(err_res.is_err());
+
+        // Allow logger
+        client.set_logger_allowed(&logger, &true);
+        assert_eq!(client.is_logger_allowed(&logger), true);
+
+        // Allowed logger succeeds
+        let pid = client.log_payment_as_logger(&logger, &id, &payer, &1000u64, &tx1);
+        assert_eq!(pid, 1);
+
+        let log = client.get_payment(&pid);
+        assert_eq!(log.amount, 1000);
+        assert_eq!(log.payer, payer);
     }
 }
