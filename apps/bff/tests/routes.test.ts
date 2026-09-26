@@ -245,7 +245,7 @@ describe("BFF routes", () => {
   });
 
   test("serves health without waiting for analytics data source", async () => {
-    const unresolvedDataSource = new Promise<never>(() => {});
+    const unresolvedDataSource = new Promise<never>(() => { });
     const handler = createBffHandler(unresolvedDataSource, null, runtimeMetadata);
 
     const response = await handler(request("/health"));
@@ -265,7 +265,7 @@ describe("BFF routes", () => {
   });
 
   test("reports readiness only after analytics data source is loaded", async () => {
-    const unresolvedDataSource = new Promise<never>(() => {});
+    const unresolvedDataSource = new Promise<never>(() => { });
     const handler = createBffHandler(unresolvedDataSource, null, runtimeMetadata);
 
     const response = await handler(request("/ready"));
@@ -284,7 +284,7 @@ describe("BFF routes", () => {
   });
 
   test("does not block providers while analytics data source is loading", async () => {
-    const unresolvedDataSource = new Promise<never>(() => {});
+    const unresolvedDataSource = new Promise<never>(() => { });
     const handler = createBffHandler(unresolvedDataSource, null, runtimeMetadata);
 
     const response = await handler(request("/providers"));
@@ -294,31 +294,49 @@ describe("BFF routes", () => {
     expect(body.error).toBe("analytics_loading");
   });
 
-  test("falls back to fixture analytics when preload fails", async () => {
-    const handler = createBffHandler(
-      Promise.reject(new Error("snapshot unavailable")),
-      null,
-      runtimeMetadata,
-    );
-    await Promise.resolve();
+  test("fails closed in production when preload falls back to fixture analytics", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
 
-    const readyResponse = await handler(request("/ready"));
-    const readyBody = (await readyResponse.json()) as {
-      status: string;
-      service: string;
-      analyticsStatus: string;
-    };
-    const providersResponse = await handler(request("/providers"));
-    const providersBody = await providersResponse.json();
+    try {
+      const handler = createBffHandler(
+        Promise.reject(new Error("snapshot unavailable")),
+        null,
+        runtimeMetadata,
+      );
+      await Promise.resolve();
 
-    expect(readyResponse.status).toBe(200);
-    expect(readyBody).toEqual({
-      status: "ok",
-      service: "flovia-bff",
-      analyticsStatus: "fallback",
-    });
-    expect(providersResponse.status).toBe(200);
-    expect(validateProviderCatalogResponse(providersBody).providerCount).toBeGreaterThan(0);
+      const readyResponse = await handler(request("/ready"));
+      const readyBody = (await readyResponse.json()) as {
+        status: string;
+        service: string;
+        analyticsStatus: string;
+        analyticsSource?: string;
+      };
+      const providersResponse = await handler(request("/providers"));
+      const providersBody = await providersResponse.json();
+
+      expect(readyResponse.status).toBe(200);
+      expect(readyBody).toEqual({
+        status: "ok",
+        service: "flovia-bff",
+        analyticsStatus: "fallback",
+        analyticsSource: "fixture",
+      });
+      expect(providersResponse.status).toBe(503);
+      expect(providersBody).toEqual(
+        expect.objectContaining({
+          error: "analytics_unavailable",
+          message: "Analytics preload failed.",
+        }),
+      );
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    }
   });
 
   test("serves health without resolving the default analytics source", async () => {
@@ -767,7 +785,7 @@ describe("BFF routes", () => {
     };
     const handler = createBffHandler(undefined, llmService);
     const originalConsoleError = console.error;
-    console.error = () => {};
+    console.error = () => { };
 
     try {
       const response = await handler(

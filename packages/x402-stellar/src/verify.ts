@@ -5,17 +5,85 @@
 // contra el challenge esperado.
 
 import { Horizon } from "@stellar/stellar-sdk";
-import type { VerifyResult, X402Challenge } from "./types";
+import type { VerifyResult } from "./types";
 
 const HORIZON_URLS = {
   testnet: "https://horizon-testnet.stellar.org",
-  public:  "https://horizon.stellar.org",
+  public: "https://horizon.stellar.org",
 };
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  public: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 };
+
+const PAYMENT_OP_TYPES = new Set([
+  "payment",
+  "path_payment_strict_send",
+  "path_payment_strict_receive",
+]);
+
+function getAssetTuple(op: any) {
+  return {
+    type: op.asset_type ?? op.destination_asset_type ?? op.source_asset_type ?? "unknown",
+    code: op.asset_code ?? op.destination_asset_code ?? op.source_asset_code ?? null,
+    issuer: op.asset_issuer ?? op.destination_asset_issuer ?? op.source_asset_issuer ?? null,
+  };
+}
+
+export function getPaymentOperationAmount(op: any): string | undefined {
+  if (!PAYMENT_OP_TYPES.has(op?.type)) {
+    return undefined;
+  }
+
+  if (op.type === "payment") {
+    return op.amount;
+  }
+
+  return op.destination_amount ?? op.amount ?? op.source_amount;
+}
+
+export function paymentOpMatchesExpected(
+  op: any,
+  expectedIssuer: string,
+  expectedDestination: string,
+  expectedAmountUsdc: string,
+): boolean {
+  if (!PAYMENT_OP_TYPES.has(op?.type)) {
+    return false;
+  }
+
+  const amount = getPaymentOperationAmount(op);
+  if (amount == null) {
+    return false;
+  }
+
+  const destination = op.to ?? op.destination_account;
+  if (destination !== expectedDestination) {
+    return false;
+  }
+
+  const { type, code, issuer } = getAssetTuple(op);
+  if (type === "native") {
+    return false;
+  }
+  if (code !== "USDC" || issuer !== expectedIssuer) {
+    return false;
+  }
+
+  return Number(amount) >= Number(expectedAmountUsdc);
+}
+
+export function findMatchingPaymentOps(
+  paymentOps: any[],
+  expectedIssuer: string,
+  expectedDestination: string,
+  expectedAmountUsdc: string,
+): any[] {
+  return paymentOps.filter((op: any) =>
+    paymentOpMatchesExpected(op, expectedIssuer, expectedDestination, expectedAmountUsdc)
+  );
+}
 
 export interface VerifyOpts {
   txHash: string;
@@ -76,44 +144,90 @@ export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult>
     return { ok: false, reason: "horizon_error", detail: String(err?.message ?? err) };
   }
 
-  const payment = opsPage.records.find(
-    (o: any) => o.type === "payment" || o.type === "path_payment_strict_send" || o.type === "path_payment_strict_receive"
-  );
-  if (!payment) {
+  const paymentOps = opsPage.records.filter((op: any) => PAYMENT_OP_TYPES.has(op?.type));
+  if (paymentOps.length === 0) {
     return { ok: false, reason: "horizon_error", detail: "no payment operation in transaction" };
   }
 
-  if (payment.to !== opts.expected.destination) {
+  const matchingOps = findMatchingPaymentOps(
+    paymentOps,
+    expectedIssuer,
+    opts.expected.destination,
+    opts.expected.amountUsdc,
+  );
+
+  if (paymentOps.length === 1) {
+    const payment = paymentOps[0];
+    if (matchingOps.length === 1) {
+      return {
+        ok: true,
+        payer: payment.from,
+        amount: String(getPaymentOperationAmount(payment) ?? "0"),
+        txHash: opts.txHash,
+        memo: tx.memo,
+      };
+    }
+
+    const firstDestination = payment.to ?? payment.destination_account;
+    const firstAmount = getPaymentOperationAmount(payment);
+    const firstAsset = getAssetTuple(payment);
+
+    if (firstDestination !== opts.expected.destination) {
+      return {
+        ok: false,
+        reason: "destination_mismatch",
+        detail: `expected ${opts.expected.destination}, got ${firstDestination}`,
+      };
+    }
+    if (firstAsset.type === "native") {
+      return { ok: false, reason: "asset_mismatch", detail: "got XLM, expected USDC" };
+    }
+    if (firstAsset.code !== "USDC" || firstAsset.issuer !== expectedIssuer) {
+      return {
+        ok: false,
+        reason: "asset_mismatch",
+        detail: `got ${firstAsset.code}/${firstAsset.issuer}, expected USDC/${expectedIssuer}`,
+      };
+    }
+    if (firstAmount == null) {
+      return { ok: false, reason: "horizon_error", detail: "payment operation missing amount" };
+    }
+    if (Number(firstAmount) < Number(opts.expected.amountUsdc)) {
+      return {
+        ok: false,
+        reason: "underpayment",
+        detail: `expected ${opts.expected.amountUsdc}, got ${firstAmount}`,
+      };
+    }
+
     return {
       ok: false,
-      reason: "destination_mismatch",
-      detail: `expected ${opts.expected.destination}, got ${payment.to}`,
+      reason: "horizon_error",
+      detail: "payment operation does not match the expected x402 payment",
     };
   }
 
-  if (payment.asset_type === "native") {
-    return { ok: false, reason: "asset_mismatch", detail: "got XLM, expected USDC" };
-  }
-  if (payment.asset_code !== "USDC" || payment.asset_issuer !== expectedIssuer) {
+  if (matchingOps.length !== paymentOps.length) {
     return {
       ok: false,
-      reason: "asset_mismatch",
-      detail: `got ${payment.asset_code}/${payment.asset_issuer}, expected USDC/${expectedIssuer}`,
+      reason: "horizon_error",
+      detail: "payment ops in transaction do not all match the expected x402 payment",
     };
   }
 
-  if (Number(payment.amount) < Number(opts.expected.amountUsdc)) {
+  const totalAmount = matchingOps.reduce((sum: number, op: any) => sum + Number(getPaymentOperationAmount(op) ?? 0), 0);
+  if (totalAmount < Number(opts.expected.amountUsdc)) {
     return {
       ok: false,
       reason: "underpayment",
-      detail: `expected ${opts.expected.amountUsdc}, got ${payment.amount}`,
+      detail: `expected ${opts.expected.amountUsdc}, got ${totalAmount}`,
     };
   }
 
   return {
     ok: true,
-    payer: payment.from,
-    amount: payment.amount,
+    payer: matchingOps[0].from,
+    amount: String(totalAmount),
     txHash: opts.txHash,
     memo: tx.memo,
   };

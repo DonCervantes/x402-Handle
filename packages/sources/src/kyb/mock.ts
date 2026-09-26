@@ -2,35 +2,36 @@
 
 export type KybRecord = {
   providerId: string;
-  status: "verified" | "pending" | "none";
+  status: "verified" | "demo_verified" | "pending" | "none";
   kybProvider?: string;
   kybTier?: 1 | 2 | 3;
   verifiedAt?: string;
 };
 
-// Ticket 4.7 — seed demo: los 5 providers sembrados en testnet
-// (apps/cli/scripts/seed-providers.ts), 3 verified / 1 pending / 1 none.
+// Ticket 4.7 — seed demo: los 5 providers sembrados en testnet.
+// Los providers 1-3 son demo-only y no deben contarse como identidad verificada de producción.
+// Reemplazar por SEP-12 real antes del launch (fecha objetivo: SEP-12).
 const REGISTRY_CONTRACT_ID = "CC4M6C3UI2Y5Z2FNPTT4UCSXYWSJH2NBILEMHQYJLWJU5IHZ3GNT7EPX";
 const providerKey = (providerId: number) => `${REGISTRY_CONTRACT_ID}/${providerId}`;
 
 const MOCKS: Record<string, KybRecord> = {
   [providerKey(1)]: {
     providerId: providerKey(1),
-    status: "verified",
+    status: "demo_verified",
     kybProvider: "mock-anchor",
     kybTier: 2,
     verifiedAt: "2026-05-01T00:00:00.000Z",
   },
   [providerKey(2)]: {
     providerId: providerKey(2),
-    status: "verified",
+    status: "demo_verified",
     kybProvider: "mock-anchor",
     kybTier: 1,
     verifiedAt: "2026-05-10T00:00:00.000Z",
   },
   [providerKey(3)]: {
     providerId: providerKey(3),
-    status: "verified",
+    status: "demo_verified",
     kybProvider: "mock-anchor",
     kybTier: 3,
     verifiedAt: "2026-04-20T00:00:00.000Z",

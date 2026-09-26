@@ -98,7 +98,7 @@ export const LANDING_COPY = {
       },
       {
         q: "How is the Trust Score calculated?",
-        a: "It's deterministic and auditable: it combines on-chain payment history, provider verification status, and category fit. It is not an ML model, so every score is fully explainable.",
+        a: "It's deterministic and auditable: it combines on-chain payment history, provider verification status, and category fit. It is not an ML model, so every score is fully explainable. The current KYB/demo ranking is testnet-only and not a production identity signal until the real SEP-12 integration lands.",
       },
       {
         q: "What do I need to start paying providers?",
