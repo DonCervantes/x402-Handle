@@ -3,11 +3,15 @@ import { createBffHandler } from "../src/http";
 
 const request = (path: string, init: RequestInit = {}) =>
   new Request(`http://localhost${path}`, init);
+
 const originalHitPayApiKey = process.env.HITPAY_API_KEY;
 const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const originalMppSecretKey = process.env.MPP_SECRET_KEY;
 const originalMppxPrivateKey = process.env.MPPX_PRIVATE_KEY;
+const originalIntentToken = process.env.SHOWCASE_STRIPE_INTENT_TOKEN;
 const originalSolanaRecipient = process.env.SOLANA_MPP_RECIPIENT;
 const originalSolanaNetwork = process.env.SOLANA_MPP_NETWORK;
+const originalSolanaSecret = process.env.SOLANA_MPP_SECRET_KEY;
 const originalSolanaPayerKey = process.env.SOLANA_MPP_PAYER_PRIVATE_KEY;
 
 describe("showcase paid API routes", () => {
@@ -24,10 +28,22 @@ describe("showcase paid API routes", () => {
       process.env.STRIPE_SECRET_KEY = originalStripeSecretKey;
     }
 
+    if (originalMppSecretKey === undefined) {
+      delete process.env.MPP_SECRET_KEY;
+    } else {
+      process.env.MPP_SECRET_KEY = originalMppSecretKey;
+    }
+
     if (originalMppxPrivateKey === undefined) {
       delete process.env.MPPX_PRIVATE_KEY;
     } else {
       process.env.MPPX_PRIVATE_KEY = originalMppxPrivateKey;
+    }
+
+    if (originalIntentToken === undefined) {
+      delete process.env.SHOWCASE_STRIPE_INTENT_TOKEN;
+    } else {
+      process.env.SHOWCASE_STRIPE_INTENT_TOKEN = originalIntentToken;
     }
 
     if (originalSolanaRecipient === undefined) {
@@ -40,6 +56,12 @@ describe("showcase paid API routes", () => {
       delete process.env.SOLANA_MPP_NETWORK;
     } else {
       process.env.SOLANA_MPP_NETWORK = originalSolanaNetwork;
+    }
+
+    if (originalSolanaSecret === undefined) {
+      delete process.env.SOLANA_MPP_SECRET_KEY;
+    } else {
+      process.env.SOLANA_MPP_SECRET_KEY = originalSolanaSecret;
     }
 
     if (originalSolanaPayerKey === undefined) {
@@ -67,6 +89,34 @@ describe("showcase paid API routes", () => {
     expect(body.floviaEvent.latencyMs).toBeGreaterThan(0);
   });
 
+  test("fails closed when MPP_SECRET_KEY is missing even if STRIPE_SECRET_KEY is set", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
+    delete process.env.MPP_SECRET_KEY;
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string; requiredEnv: string[] };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("stripe_mpp_secret_required");
+    expect(body.requiredEnv).toContain("MPP_SECRET_KEY");
+  });
+
+  test("does not create PaymentIntents on unauthenticated GET", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
+    delete process.env.SHOWCASE_STRIPE_INTENT_TOKEN;
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("stripe_payment_intent_auth_required");
+  });
+
   test("does not accept demo credentials for real Stripe MPP flow", async () => {
     delete process.env.STRIPE_SECRET_KEY;
     const response = await createBffHandler(new Promise<never>(() => {}))(
@@ -80,6 +130,7 @@ describe("showcase paid API routes", () => {
 
   test("rejects malformed Stripe MPP credentials before creating PaymentIntents", async () => {
     process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
       request("/showcase/stripe-mpp/paid", {
@@ -153,6 +204,7 @@ describe("showcase paid API routes", () => {
 
   test("returns clear Solana configuration error when recipient is missing", async () => {
     delete process.env.SOLANA_MPP_RECIPIENT;
+    process.env.SOLANA_MPP_SECRET_KEY = "stable-solana-mpp-secret";
     const response = await createBffHandler(new Promise<never>(() => {}))(
       request("/showcase/solana-mpp/paid"),
     );
@@ -169,8 +221,23 @@ describe("showcase paid API routes", () => {
     expect(body.floviaEvent.latencyMs).toBeGreaterThan(0);
   });
 
+  test("fails closed when SOLANA_MPP_SECRET_KEY is missing (no random secret)", async () => {
+    process.env.SOLANA_MPP_RECIPIENT = "DummyRecipient1111111111111111111111111111111";
+    delete process.env.SOLANA_MPP_SECRET_KEY;
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/solana-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string; requiredEnv: string[] };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("solana_mpp_secret_required");
+    expect(body.requiredEnv).toContain("SOLANA_MPP_SECRET_KEY");
+  });
+
   test("the Solana not_configured response reflects the configured network", async () => {
     delete process.env.SOLANA_MPP_RECIPIENT;
+    process.env.SOLANA_MPP_SECRET_KEY = "stable-solana-mpp-secret";
     process.env.SOLANA_MPP_NETWORK = "mainnet-beta";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
@@ -261,7 +328,6 @@ describe("showcase paid API routes", () => {
   });
 
   test("rejects base58 payer keys that decode to the wrong length", async () => {
-    // "2" is base58 for 0x01 — only 1 byte, far short of the 64 required.
     process.env.SOLANA_MPP_PAYER_PRIVATE_KEY = "2";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
@@ -279,7 +345,6 @@ describe("showcase paid API routes", () => {
   });
 
   test("accepts a valid 64-byte JSON payer keypair (config-time only; payment requires devnet funding)", async () => {
-    // Generate a real ed25519 keypair, pack into the Solana CLI 64-byte format.
     const kp = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
     const skJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
     const pkJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
@@ -289,11 +354,8 @@ describe("showcase paid API routes", () => {
     combined.set(skRaw, 0);
     combined.set(pkRaw, 32);
     process.env.SOLANA_MPP_PAYER_PRIVATE_KEY = JSON.stringify(Array.from(combined));
-    // Pin a recipient so the assertion below isolates payer-key parsing from
-    // the unrelated `solana_mpp_not_configured` (missing recipient) 503 path.
-    // Without this, CI runs that don't define SOLANA_MPP_RECIPIENT see the
-    // paid handler short-circuit at 503 before the payment stage is reached.
     process.env.SOLANA_MPP_RECIPIENT = "9cVgh9GaPrQ7nsCEwx1GE9eqSArs5XodyMX7vLRhHp4F";
+    process.env.SOLANA_MPP_SECRET_KEY = "stable-solana-mpp-secret";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
       request("/showcase/solana-mpp/pay", {
@@ -303,13 +365,11 @@ describe("showcase paid API routes", () => {
     );
     const body = (await response.json()) as { error?: string };
 
-    // The route should NOT bounce on key parsing. It will subsequently fail at
-    // the payment stage (502 for unfunded wallet / network unreachable), but
-    // that proves the key was accepted.
     expect(response.status).not.toBe(503);
     expect(body.error).not.toBe("solana_mpp_payer_key_invalid");
     expect(body.error).not.toBe("solana_mpp_payer_not_configured");
     expect(body.error).not.toBe("solana_mpp_not_configured");
+    expect(body.error).not.toBe("solana_mpp_secret_required");
   });
 
   test("rejects POST with the wrong confirmation header value", async () => {

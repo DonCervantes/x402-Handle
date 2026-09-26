@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { Mppx as ClientMppx, solana as clientSolana } from "@solana/mpp/client";
 import { Mppx, solana } from "@solana/mpp/server";
@@ -16,7 +15,7 @@ const displayAmount = "0.10";
 const displayCurrency = "usdc";
 
 // Protocol-level values handed to `mppx.charge({...})`. These must match the
-// Solana MPP SPL token mint and base-unit amount, not the display strings above.
+// Solana MPP SPL token mint and baseunit amount, not the display strings above.
 const USDC_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const decimals = 6;
 const baseUnitsAmount = toBaseUnits(displayAmount, decimals);
@@ -30,7 +29,7 @@ function toBaseUnits(amount: string, dec: number): string {
     throw new Error(`Invalid Solana MPP amount: ${amount}`);
   }
   const padded = (fraction + "0".repeat(dec)).slice(0, dec);
-  const combined = `${whole}${padded}`.replace(/^0+(?=\d)/, "");
+  const combined = `\( {whole} \){padded}`.replace(/^0+(?=\d)/, "");
   return combined === "" ? "0" : combined;
 }
 
@@ -48,11 +47,11 @@ const envValue = (key: string) => {
   return value ? value : null;
 };
 
-const buildSolanaMppx = (recipient: string, network: SolanaNetwork) => {
+const buildSolanaMppx = (recipient: string, network: SolanaNetwork, secretKey: string) => {
   const mint = envValue("SOLANA_MPP_CURRENCY") ?? USDC_DEVNET_MINT;
   const rpcUrl = envValue("SOLANA_MPP_RPC_URL");
   return Mppx.create({
-    secretKey: envValue("SOLANA_MPP_SECRET_KEY") ?? crypto.randomBytes(32).toString("base64"),
+    secretKey,
     methods: [
       solana.charge({
         recipient,
@@ -70,9 +69,18 @@ let cachedRecipient: string | null = null;
 let cachedNetwork: SolanaNetwork | null = null;
 let cachedRpcUrl: string | null = null;
 
-const resolveSolanaMppx = (network: SolanaNetwork) => {
+type SolanaMppResolved =
+  | { ok: true; mppx: ReturnType<typeof buildSolanaMppx>; recipient: string }
+  | { ok: false; reason: "missing_recipient" | "missing_secret" };
+
+const resolveSolanaMppx = (network: SolanaNetwork): SolanaMppResolved => {
   const recipient = envValue("SOLANA_MPP_RECIPIENT");
-  if (!recipient) return null;
+  if (!recipient) return { ok: false, reason: "missing_recipient" };
+
+  // Fail closed: never generate an ephemeral secret at runtime (#72).
+  const secretKey = envValue("SOLANA_MPP_SECRET_KEY");
+  if (!secretKey) return { ok: false, reason: "missing_secret" };
+
   const rpcUrl = envValue("SOLANA_MPP_RPC_URL");
   if (
     cachedMppx &&
@@ -80,13 +88,13 @@ const resolveSolanaMppx = (network: SolanaNetwork) => {
     cachedNetwork === network &&
     cachedRpcUrl === rpcUrl
   ) {
-    return { mppx: cachedMppx, recipient };
+    return { ok: true, mppx: cachedMppx, recipient };
   }
-  cachedMppx = buildSolanaMppx(recipient, network);
+  cachedMppx = buildSolanaMppx(recipient, network, secretKey);
   cachedRecipient = recipient;
   cachedNetwork = network;
   cachedRpcUrl = rpcUrl;
-  return { mppx: cachedMppx, recipient };
+  return { ok: true, mppx: cachedMppx, recipient };
 };
 
 export const handleSolanaMppPaidShowcase = (request: Request) =>
@@ -120,13 +128,39 @@ export const handleSolanaMppPaidShowcase = (request: Request) =>
 
       const resolved = resolveSolanaMppx(network);
 
-      if (!resolved) {
+      if (!resolved.ok && resolved.reason === "missing_secret") {
+        return json(
+          {
+            error: "solana_mpp_secret_required",
+            message:
+              "Set SOLANA_MPP_SECRET_KEY to a stable server secret. The showcase does not generate secrets at runtime.",
+            requiredEnv: ["SOLANA_MPP_SECRET_KEY", "SOLANA_MPP_RECIPIENT"],
+            optionalEnv: ["SOLANA_MPP_NETWORK", "SOLANA_MPP_CURRENCY", "SOLANA_MPP_RPC_URL"],
+            floviaEvent: {
+              status: "configuration_required",
+              responseStatus: 503,
+              payment: {
+                provider,
+                rail,
+                network: `solana-${network}`,
+                amount: displayAmount,
+                currency: displayCurrency,
+              },
+              joinedInsight:
+                "Solana MPP showcase fails closed when SOLANA_MPP_SECRET_KEY is unset (no ephemeral random secret).",
+            },
+          },
+          { status: 503 },
+        );
+      }
+
+      if (!resolved.ok) {
         return json(
           {
             error: "solana_mpp_not_configured",
             message: `Set SOLANA_MPP_RECIPIENT to enable the real Solana MPP showcase flow on ${network}.`,
-            requiredEnv: ["SOLANA_MPP_RECIPIENT"],
-            optionalEnv: ["SOLANA_MPP_NETWORK", "SOLANA_MPP_CURRENCY", "SOLANA_MPP_SECRET_KEY"],
+            requiredEnv: ["SOLANA_MPP_RECIPIENT", "SOLANA_MPP_SECRET_KEY"],
+            optionalEnv: ["SOLANA_MPP_NETWORK", "SOLANA_MPP_CURRENCY", "SOLANA_MPP_RPC_URL"],
             floviaEvent: {
               status: "configuration_required",
               responseStatus: 503,
@@ -320,13 +354,11 @@ export const handleSolanaMppPayShowcase = async (request: Request) => {
   try {
     signer = await resolveSolanaPayerSigner();
   } catch (error) {
+    if (!(error instanceof InvalidSolanaPayerKeyError)) throw error;
     return json(
       {
-        error: "solana_mpp_payer_key_invalid",
-        message:
-          error instanceof InvalidSolanaPayerKeyError
-            ? error.message
-            : "SOLANA_MPP_PAYER_PRIVATE_KEY could not be decoded.",
+        error: "solana_mpp_payer_invalid",
+        message: error.message,
         requiredEnv: ["SOLANA_MPP_PAYER_PRIVATE_KEY"],
       },
       { status: 503 },
@@ -430,4 +462,4 @@ export async function convertPostPay402ToFailure(
     },
     { status: 502 },
   );
-}
+    }
