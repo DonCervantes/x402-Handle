@@ -9,6 +9,7 @@
  * Requiere en .env: REGISTRY_CONTRACT_ID, SOROBAN_RPC_URL, DATABASE_URL.
  */
 import { stellar } from "sources";
+import { classifyRegistryEvent } from "./registry-events";
 
 const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
 if (!CONTRACT_ID) {
@@ -53,8 +54,7 @@ function tsToIso(unixSeconds: bigint): string {
 }
 
 async function getLastLedger(): Promise<number> {
-  const rows =
-    await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
+  const rows = await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
   if (rows.length > 0) return Number(rows[0].value);
   // Primer arranque: arrancar ~30 min antes del último ledger para no
   // depender de conocer el ledger exacto del deploy.
@@ -103,6 +103,18 @@ async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> 
   `;
 }
 
+async function setProviderActive(
+  providerId: bigint,
+  active: boolean,
+  ledgerClosedAt: string,
+): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = ${active}, last_seen_at = ${ledgerClosedAt}
+    WHERE id = ${providerRowId(providerId)}
+  `;
+}
+
 async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
   const fromLedger = await getLastLedger();
   const events = await stellar.getContractEvents({
@@ -116,15 +128,24 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
   let maxLedger = fromLedger;
 
   for (const ev of events) {
-    const kind = ev.topics?.[1];
-    if (kind === "prov_reg" || kind === "prov_upd") {
+    if (ev.ledger > maxLedger) maxLedger = ev.ledger;
+    const registryEvent = classifyRegistryEvent(ev, CONTRACT_ID!);
+    if (!registryEvent) continue;
+
+    if (registryEvent.kind === "prov_reg" || registryEvent.kind === "prov_upd") {
       await upsertProvider(ev.value as RawProvider, ev.timestamp);
       providerCount++;
-    } else if (kind === "pay_log") {
+    } else if (registryEvent.kind === "prov_off" || registryEvent.kind === "prov_on") {
+      await setProviderActive(
+        registryEvent.providerId,
+        registryEvent.kind === "prov_on",
+        ev.timestamp,
+      );
+      providerCount++;
+    } else if (registryEvent.kind === "pay_log") {
       await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
       paymentCount++;
     }
-    if (ev.ledger > maxLedger) maxLedger = ev.ledger;
   }
 
   // Avanzar al menos al ledger actual + 1 para no re-pedir lo ya visto,
@@ -141,7 +162,7 @@ async function main(): Promise<void> {
   do {
     const result = await runOnce();
     console.log(
-      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments}`
+      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments}`,
     );
     if (watch) await new Promise((r) => setTimeout(r, 5000));
   } while (watch);

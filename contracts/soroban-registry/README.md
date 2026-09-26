@@ -14,23 +14,31 @@ A Public deployment is blocked until the [Stellar mainnet go-live checklist](../
 - **`log_payment(provider_id, payer, amount, tx_hash)`** — registra que se cobró por uso (cualquiera puede llamarlo; protección contra duplicados por `tx_hash`).
 - **Lecturas:** `get_provider(id)`, `list_providers()`, `get_payment_log(provider_id, limit)`.
 
-## Eventos
+## Events
 
-- `provider_registered(id, owner)` — emitido al crear.
-- `provider_updated(id)` — emitido al actualizar.
-- `provider_deactivated(id)` — emitido al pausar.
-- `payment_logged(provider_id, payer, amount, tx_hash)` — emitido al loguear pago.
+The contract publishes three topics: `("registry", event, provider_id)`.
+The indexer in `apps/cli/indexer.ts` subscribes to these short event symbols.
 
-El indexer de Flovia (`apps/cli/indexer.ts`) consume estos eventos.
+| Event symbol | Emitted by | Data |
+| --- | --- | --- |
+| `prov_reg` | `register_provider` | `Provider` |
+| `prov_upd` | `update_provider` | `Provider` |
+| `prov_off` | `deactivate` | `()` |
+| `prov_on` | `activate` | `()` |
+| `pay_log` | `log_payment` | `PaymentLog` |
+
+Long names such as `provider_registered` and `payment_logged` are not emitted.
 
 ## Build
 
 ```bash
-cd code/soroban-registry
-cargo build --target wasm32-unknown-unknown --release
-# o:
+cd contracts/soroban-registry
 stellar contract build
 ```
+
+The crate is named `flovia-registry` in `Cargo.toml`, so this build produces
+`target/wasm32v1-none/release/flovia_registry.wasm` in the crate directory.
+Use this same file for deployment.
 
 ## Test
 
@@ -42,7 +50,7 @@ cargo test
 
 ```bash
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/flovia_registry.wasm \
+  --wasm target/wasm32v1-none/release/flovia_registry.wasm \
   --source <admin-secret> \
   --network testnet
 ```
