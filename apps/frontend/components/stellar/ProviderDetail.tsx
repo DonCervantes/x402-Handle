@@ -88,7 +88,7 @@ export function ProviderDetail({ intelligence }: { intelligence: ProviderIntelli
                   <dd
                     style={{ gridColumn: "1 / -1", fontSize: 12, color: "var(--text-3)", marginTop: 4 }}
                   >
-                    Mock demo (anchor SEP-12 real planeado post-hackathon).
+                    Demo KYB only — not a production identity signal. Real SEP-12 verification replaces this before launch.
                   </dd>
                 </dl>
               ),

@@ -4,12 +4,14 @@ import { ScoreRing } from "./ScoreRing";
 
 const KYB_LABEL: Record<string, string> = {
   verified: "KYB verificado",
+  demo_verified: "Demo KYB",
   pending: "KYB pendiente",
   none: "Sin KYB",
 };
 
 const KYB_COLOR: Record<string, string> = {
   verified: "var(--signal-priority)",
+  demo_verified: "var(--signal-attention)",
   pending: "var(--signal-attention)",
   none: "var(--text-3)",
 };
@@ -17,7 +19,7 @@ const KYB_COLOR: Record<string, string> = {
 type ProviderCardProps = {
   provider: StellarProvider;
   trustScore?: number;
-  kybStatus?: "verified" | "pending" | "none";
+  kybStatus?: "verified" | "demo_verified" | "pending" | "none";
 };
 
 export function ProviderCard({ provider, trustScore, kybStatus }: ProviderCardProps) {

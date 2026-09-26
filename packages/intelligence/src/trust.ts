@@ -52,7 +52,7 @@ export function volumeFactor(volume30dUsdc: number): number {
 
 export function kybFactor(status: KybStatus): number {
   if (status === "verified") return 1.0;
-  if (status === "pending") return 0.3;
+  if (status === "demo_verified" || status === "pending") return 0.3;
   return 0;
 }
 
