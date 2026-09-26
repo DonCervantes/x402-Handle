@@ -51,7 +51,7 @@ export function TrustScoreBreakdown({ trustScore }: { trustScore: TrustScore }) 
         ))}
         <span style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
           Calculado {new Date(trustScore.computedAt).toLocaleString()} — fórmula determinística,
-          no ML.
+          no ML. Ranking demo-only en testnet hasta la integración real de KYB/SEP-12.
         </span>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { z } from "zod";
 // Ver contracts/soroban-registry/src/lib.rs (struct Provider) y
 // apps/data/migrations/019_stellar_registry_indexer.sql (tabla `providers`).
 
-export const KybStatusSchema = z.enum(["verified", "pending", "none"]);
+export const KybStatusSchema = z.enum(["verified", "demo_verified", "pending", "none"]);
 export type KybStatus = z.infer<typeof KybStatusSchema>;
 
 export const StellarProviderSchema = z
