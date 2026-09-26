@@ -10,13 +10,15 @@
  */
 import { stellar } from "sources";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
-if (!CONTRACT_ID) {
-  console.error("Missing REGISTRY_CONTRACT_ID in .env");
-  process.exit(1);
-}
-
 const POLL_LIMIT = 1000;
+
+function getContractId(): string {
+  const contractId = process.env.REGISTRY_CONTRACT_ID;
+  if (!contractId) {
+    throw new Error("Missing REGISTRY_CONTRACT_ID in .env");
+  }
+  return contractId;
+}
 
 type RawProvider = {
   id: bigint;
@@ -40,8 +42,8 @@ type RawPaymentLog = {
   timestamp: bigint;
 };
 
-function providerRowId(providerId: bigint): string {
-  return `${CONTRACT_ID}/${providerId}`;
+function providerRowId(providerId: bigint, contractId: string): string {
+  return `${contractId}/${providerId}`;
 }
 
 function stroopsToUsdc(stroops: bigint): string {
@@ -70,13 +72,17 @@ async function setLastLedger(ledger: number): Promise<void> {
   `;
 }
 
-async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<void> {
+async function upsertProvider(
+  contractId: string,
+  p: RawProvider,
+  ledgerClosedAt: string,
+): Promise<void> {
   await Bun.sql`
     INSERT INTO providers (
       id, contract_id, provider_id, name, endpoint, price_usdc,
       owner_account, payment_asset, category, active, created_at, last_seen_at, metadata
     ) VALUES (
-      ${providerRowId(p.id)}, ${CONTRACT_ID}, ${Number(p.id)}, ${p.name}, ${p.endpoint},
+      ${providerRowId(p.id, contractId)}, ${contractId}, ${Number(p.id)}, ${p.name}, ${p.endpoint},
       ${stroopsToUsdc(p.price_stroops)}, ${p.owner}, 'USDC', ${p.category},
       ${p.active}, ${tsToIso(p.created_at)}, ${ledgerClosedAt}, '{}'::jsonb
     )
@@ -90,53 +96,99 @@ async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<v
   `;
 }
 
-async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> {
+async function upsertPayment(
+  contractId: string,
+  log: RawPaymentLog,
+  ledger: number,
+): Promise<void> {
   const txHashHex = Buffer.from(log.tx_hash).toString("hex");
   await Bun.sql`
     INSERT INTO payments (
       tx_hash, provider_id, payer_account, amount_usdc, ledger, paid_at
     ) VALUES (
-      ${txHashHex}, ${providerRowId(log.provider_id)}, ${log.payer},
+      ${txHashHex}, ${providerRowId(log.provider_id, contractId)}, ${log.payer},
       ${stroopsToUsdc(log.amount)}, ${ledger}, ${tsToIso(log.timestamp)}
     )
     ON CONFLICT (tx_hash) DO NOTHING
   `;
 }
 
+type SorobanEventLike = {
+  ledger: number;
+  topics?: unknown[];
+  value?: unknown;
+  timestamp?: string | number | bigint;
+};
+
+export async function fetchAndProcessSorobanEvents<TEvent extends SorobanEventLike>(opts: {
+  fromLedger: number;
+  latestLedger: number;
+  limit: number;
+  fetchPage: (ledger: number, limit: number) => Promise<TEvent[]>;
+  onPage: (events: TEvent[]) => Promise<void>;
+}): Promise<number> {
+  let cursor = opts.fromLedger;
+  let maxLedgerSeen = opts.fromLedger - 1;
+
+  while (cursor <= opts.latestLedger) {
+    const page = await opts.fetchPage(cursor, opts.limit);
+    if (page.length === 0) {
+      break;
+    }
+
+    await opts.onPage(page);
+
+    for (const ev of page) {
+      if (ev.ledger > maxLedgerSeen) {
+        maxLedgerSeen = ev.ledger;
+      }
+    }
+
+    cursor = maxLedgerSeen + 1;
+  }
+
+  return Math.max(opts.fromLedger, maxLedgerSeen + 1, opts.latestLedger + 1);
+}
+
 async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
+  const contractId = getContractId();
   const fromLedger = await getLastLedger();
-  const events = await stellar.getContractEvents({
-    contractId: CONTRACT_ID!,
-    fromLedger,
-    limit: POLL_LIMIT,
-  });
+  const latest = await stellar.getLatestLedger();
 
   let providerCount = 0;
   let paymentCount = 0;
-  let maxLedger = fromLedger;
 
-  for (const ev of events) {
-    const kind = ev.topics?.[1];
-    if (kind === "prov_reg" || kind === "prov_upd") {
-      await upsertProvider(ev.value as RawProvider, ev.timestamp);
-      providerCount++;
-    } else if (kind === "pay_log") {
-      await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
-      paymentCount++;
-    }
-    if (ev.ledger > maxLedger) maxLedger = ev.ledger;
-  }
+  const nextFrom = await fetchAndProcessSorobanEvents({
+    fromLedger,
+    latestLedger: latest,
+    limit: POLL_LIMIT,
+    fetchPage: async (cursor, limit) =>
+      stellar.getContractEvents({
+        contractId,
+        fromLedger: cursor,
+        limit,
+      }),
+    onPage: async (page) => {
+      for (const ev of page) {
+        const kind = ev.topics?.[1];
+        if (kind === "prov_reg" || kind === "prov_upd") {
+          await upsertProvider(contractId, ev.value as RawProvider, ev.timestamp as string);
+          providerCount++;
+        } else if (kind === "pay_log") {
+          await upsertPayment(contractId, ev.value as RawPaymentLog, ev.ledger);
+          paymentCount++;
+        }
+      }
+    },
+  });
 
-  // Avanzar al menos al ledger actual + 1 para no re-pedir lo ya visto,
-  // incluso si no hubo eventos nuevos.
-  const latest = await stellar.getLatestLedger();
-  const nextFrom = Math.max(maxLedger + 1, fromLedger, Math.min(latest, fromLedger));
-  await setLastLedger(events.length > 0 ? maxLedger + 1 : Math.max(fromLedger, latest - 1));
+  await setLastLedger(nextFrom);
 
   return { ledger: nextFrom, providers: providerCount, payments: paymentCount };
 }
 
 async function main(): Promise<void> {
+  getContractId();
   const watch = process.argv.includes("--watch");
   do {
     const result = await runOnce();
@@ -147,7 +199,9 @@ async function main(): Promise<void> {
   } while (watch);
 }
 
-main().catch((err) => {
-  console.error("[indexer] fatal:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("[indexer] fatal:", err);
+    process.exit(1);
+  });
+}
