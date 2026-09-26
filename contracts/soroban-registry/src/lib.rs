@@ -2,22 +2,32 @@
 //! Flovia Registry — On-chain registry of providers + payment log.
 //!
 //! Storage layout:
-//!   - DataKey::Admin               → Address (admin que puede pausar globalmente)
-//!   - DataKey::ProviderCounter     → u64 (auto-increment de provider_id)
+//!   - DataKey::Admin               → Address
+//!   - DataKey::ProviderCounter     → u64
 //!   - DataKey::Provider(u64)       → Provider
+//!   - DataKey::Handle(String)      → u64
 //!   - DataKey::PaymentCounter      → u64
 //!   - DataKey::Payment(u64)        → PaymentLog
-//!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
+//!   - DataKey::TxConsumed(BytesN<32>) → bool
 //!
-//! Events:
-//!   ("registry", "provider_registered", id)        data = Provider
-//!   ("registry", "provider_updated", id)           data = Provider
-//!   ("registry", "provider_deactivated", id)       data = ()
-//!   ("registry", "payment_logged", provider_id)    data = PaymentLog
+//! HANDLEs are human-readable provider aliases such as:
+//!   "fx-oracle" → provider_id 1
+//!   "weather"   → provider_id 2
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, panic_with_error,
-    symbol_short, vec, Address, BytesN, Env, String, Symbol, Vec,
+    contract,
+    contracterror,
+    contractimpl,
+    contracttype,
+    panic_with_error,
+    symbol_short,
+    vec,
+    Address,
+    BytesN,
+    Env,
+    String,
+    Symbol,
+    Vec,
 };
 
 // ───────────────────────────── Errors
@@ -32,6 +42,7 @@ pub enum Error {
     NotFound             = 4,
     PaymentAlreadyLogged = 5,
     InvalidArgument      = 6,
+    HandleAlreadyTaken   = 7,
 }
 
 // ───────────────────────────── Types
@@ -41,15 +52,15 @@ pub enum Error {
 pub struct Provider {
     pub id:             u64,
     pub owner:          Address,
-    pub name:           String,
-    pub endpoint:       String,
-    pub price_stroops:  u64,     // precio por call, en stroops de USDC
-    pub payment_token:  Address, // contrato del activo (USDC)
-    pub metadata_hash:  BytesN<32>,
-    pub category:       Symbol,
-    pub created_at:     u64,
-    pub updated_at:     u64,
-    pub active:         bool,
+    pub name:            String,
+    pub endpoint:        String,
+    pub price_stroops:  u64,
+    pub payment_token:  Address,
+    pub metadata_hash:   BytesN<32>,
+    pub category:        Symbol,
+    pub created_at:      u64,
+    pub updated_at:      u64,
+    pub active:           bool,
 }
 
 #[contracttype]
@@ -58,7 +69,7 @@ pub struct PaymentLog {
     pub id:           u64,
     pub provider_id:  u64,
     pub payer:        Address,
-    pub amount:       u64,         // stroops
+    pub amount:       u64,
     pub tx_hash:      BytesN<32>,
     pub timestamp:    u64,
 }
@@ -69,6 +80,7 @@ enum DataKey {
     Admin,
     ProviderCounter,
     Provider(u64),
+    Handle(String),
     PaymentCounter,
     Payment(u64),
     TxConsumed(BytesN<32>),
@@ -87,6 +99,7 @@ impl FloviaRegistry {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
@@ -101,8 +114,6 @@ impl FloviaRegistry {
 
     // ─── Provider management ───────────────────────────────────
 
-    /// Registra un nuevo proveedor. Requiere firma del `owner`.
-    /// Devuelve el provider_id asignado.
     pub fn register_provider(
         env: Env,
         owner: Address,
@@ -124,9 +135,11 @@ impl FloviaRegistry {
             .instance()
             .get(&DataKey::ProviderCounter)
             .unwrap_or(0);
+
         counter += 1;
 
         let now = env.ledger().timestamp();
+
         let provider = Provider {
             id: counter,
             owner: owner.clone(),
@@ -141,8 +154,13 @@ impl FloviaRegistry {
             active: true,
         };
 
-        env.storage().persistent().set(&DataKey::Provider(counter), &provider);
-        env.storage().instance().set(&DataKey::ProviderCounter, &counter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(counter), &provider);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ProviderCounter, &counter);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_reg"), counter),
@@ -152,7 +170,105 @@ impl FloviaRegistry {
         counter
     }
 
-    /// Actualiza campos mutables del provider. Requiere firma del owner.
+    // ─── HANDLE aliases ────────────────────────────────────────
+
+    /// Registers a human-readable HANDLE for an existing provider.
+    ///
+    /// Example:
+    ///   "fx-oracle" -> provider_id 1
+    ///
+    /// Only the provider owner can register the HANDLE.
+    pub fn register_handle(
+        env: Env,
+        provider_id: u64,
+        handle: String,
+    ) {
+        let provider: Provider = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Provider(provider_id))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
+
+        provider.owner.require_auth();
+
+        if !Self::valid_handle(&handle) {
+            panic_with_error!(&env, Error::InvalidArgument);
+        }
+
+        let key = DataKey::Handle(handle.clone());
+
+        if env.storage().persistent().has(&key) {
+            panic_with_error!(&env, Error::HandleAlreadyTaken);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&key, &provider_id);
+    }
+
+    /// Resolves a HANDLE to the corresponding provider ID.
+    ///
+    /// Example:
+    ///   "fx-oracle" -> 1
+    pub fn resolve_handle(
+        env: Env,
+        handle: String,
+    ) -> u64 {
+        if !Self::valid_handle(&handle) {
+            panic_with_error!(&env, Error::InvalidArgument);
+        }
+
+        env.storage()
+            .persistent()
+            .get(&DataKey::Handle(handle))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound))
+    }
+
+    /// Validates the HANDLE slug format.
+    ///
+    /// Rules:
+    /// - 1 to 64 bytes
+    /// - lowercase ASCII letters a-z
+    /// - digits 0-9
+    /// - hyphen '-'
+    /// - must start with a letter or digit
+    /// - must end with a letter or digit
+    fn valid_handle(handle: &String) -> bool {
+        let bytes = handle.to_bytes();
+
+        if bytes.is_empty() || bytes.len() > 64 {
+            return false;
+        }
+
+        let mut previous_was_hyphen = false;
+        let mut index = 0u32;
+
+        for byte in bytes.iter() {
+            let is_letter = byte >= b'a' && byte <= b'z';
+            let is_digit = byte >= b'0' && byte <= b'9';
+            let is_hyphen = byte == b'-';
+
+            if !is_letter && !is_digit && !is_hyphen {
+                return false;
+            }
+
+            if index == 0 && is_hyphen {
+                return false;
+            }
+
+            if previous_was_hyphen && is_hyphen {
+                return false;
+            }
+
+            previous_was_hyphen = is_hyphen;
+            index += 1;
+        }
+
+        !previous_was_hyphen
+    }
+
+    // ─── Provider updates ───────────────────────────────────────
+
     pub fn update_provider(
         env: Env,
         provider_id: u64,
@@ -173,7 +289,9 @@ impl FloviaRegistry {
         p.metadata_hash = metadata_hash;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_upd"), provider_id),
@@ -181,7 +299,6 @@ impl FloviaRegistry {
         );
     }
 
-    /// Marca como inactivo. Requiere firma del owner.
     pub fn deactivate(env: Env, provider_id: u64) {
         let mut p: Provider = env
             .storage()
@@ -194,7 +311,9 @@ impl FloviaRegistry {
         p.active = false;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_off"), provider_id),
@@ -202,7 +321,6 @@ impl FloviaRegistry {
         );
     }
 
-    /// Reactiva un provider previamente desactivado. Requiere firma del owner.
     pub fn activate(env: Env, provider_id: u64) {
         let mut p: Provider = env
             .storage()
@@ -215,7 +333,9 @@ impl FloviaRegistry {
         p.active = true;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_on"), provider_id),
@@ -239,14 +359,18 @@ impl FloviaRegistry {
             .unwrap_or(0)
     }
 
-    /// Devuelve los providers en rango [from_id, to_id] (inclusive).
-    /// Si un id no existe, se omite. Pensado para paginación desde el indexer.
-    pub fn list_providers(env: Env, from_id: u64, to_id: u64) -> Vec<Provider> {
+    pub fn list_providers(
+        env: Env,
+        from_id: u64,
+        to_id: u64,
+    ) -> Vec<Provider> {
         if from_id == 0 || to_id < from_id {
             panic_with_error!(&env, Error::InvalidArgument);
         }
+
         let mut out: Vec<Provider> = vec![&env];
         let mut id = from_id;
+
         while id <= to_id {
             if let Some(p) = env
                 .storage()
@@ -255,16 +379,15 @@ impl FloviaRegistry {
             {
                 out.push_back(p);
             }
+
             id += 1;
         }
+
         out
     }
 
     // ─── Payment log ────────────────────────────────────────────
 
-    /// Loguea un pago. Cualquiera puede llamar; la protección es
-    /// la unicidad de `tx_hash` (replay-proof).
-    /// En v2: restringir a llamadores autorizados (oracle, provider's middleware).
     pub fn log_payment(
         env: Env,
         provider_id: u64,
@@ -272,15 +395,14 @@ impl FloviaRegistry {
         amount: u64,
         tx_hash: BytesN<32>,
     ) -> u64 {
-        // El provider debe existir
         let provider: Provider = env
             .storage()
             .persistent()
             .get(&DataKey::Provider(provider_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
 
-        // Replay protection
         let consumed_key = DataKey::TxConsumed(tx_hash.clone());
+
         if env.storage().persistent().has(&consumed_key) {
             panic_with_error!(&env, Error::PaymentAlreadyLogged);
         }
@@ -290,6 +412,7 @@ impl FloviaRegistry {
             .instance()
             .get(&DataKey::PaymentCounter)
             .unwrap_or(0);
+
         counter += 1;
 
         let log = PaymentLog {
@@ -301,22 +424,32 @@ impl FloviaRegistry {
             timestamp: env.ledger().timestamp(),
         };
 
-        env.storage().persistent().set(&DataKey::Payment(counter), &log);
-        env.storage().persistent().set(&consumed_key, &true);
-        env.storage().instance().set(&DataKey::PaymentCounter, &counter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Payment(counter), &log);
+
+        env.storage()
+            .persistent()
+            .set(&consumed_key, &true);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PaymentCounter, &counter);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
             log.clone(),
         );
 
-        // silenciar warning por unused
         let _ = provider;
 
         counter
     }
 
-    pub fn get_payment(env: Env, payment_id: u64) -> PaymentLog {
+    pub fn get_payment(
+        env: Env,
+        payment_id: u64,
+    ) -> PaymentLog {
         env.storage()
             .persistent()
             .get(&DataKey::Payment(payment_id))
@@ -330,8 +463,6 @@ impl FloviaRegistry {
             .unwrap_or(0)
     }
 
-    /// Lista pagos en rango [from_id, to_id] filtrados por provider_id.
-    /// Para uso del indexer / análisis off-chain.
     pub fn list_payments(
         env: Env,
         provider_id: u64,
@@ -341,8 +472,10 @@ impl FloviaRegistry {
         if from_id == 0 || to_id < from_id {
             panic_with_error!(&env, Error::InvalidArgument);
         }
+
         let mut out: Vec<PaymentLog> = vec![&env];
         let mut id = from_id;
+
         while id <= to_id {
             if let Some(p) = env
                 .storage()
@@ -353,8 +486,10 @@ impl FloviaRegistry {
                     out.push_back(p);
                 }
             }
+
             id += 1;
         }
+
         out
     }
 }
@@ -364,21 +499,51 @@ impl FloviaRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, testutils::Ledger, BytesN, Env, String, Symbol};
+    use soroban_sdk::{
+        testutils::Address as _,
+        testutils::Ledger,
+        BytesN,
+        Env,
+        String,
+        Symbol,
+    };
 
     fn setup() -> (Env, FloviaRegistryClient<'static>, Address) {
         let env = Env::default();
         env.mock_all_auths();
+
         let admin = Address::generate(&env);
         let contract_id = env.register_contract(None, FloviaRegistry);
         let client = FloviaRegistryClient::new(&env, &contract_id);
+
         client.initialize(&admin);
+
         (env, client, admin)
+    }
+
+    fn register_test_provider(
+        env: &Env,
+        client: &FloviaRegistryClient,
+        owner: &Address,
+    ) -> u64 {
+        let token = Address::generate(env);
+        let meta = BytesN::from_array(env, &[0u8; 32]);
+
+        client.register_provider(
+            owner,
+            &String::from_str(env, "Test Provider"),
+            &String::from_str(env, "https://example.com"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(env, "data"),
+        )
     }
 
     #[test]
     fn registers_and_reads_provider() {
         let (env, client, _admin) = setup();
+
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[1u8; 32]);
@@ -392,8 +557,11 @@ mod test {
             &meta,
             &Symbol::new(&env, "fx"),
         );
+
         assert_eq!(id, 1);
+
         let p = client.get_provider(&id);
+
         assert_eq!(p.id, 1);
         assert_eq!(p.owner, owner);
         assert_eq!(p.active, true);
@@ -401,11 +569,77 @@ mod test {
     }
 
     #[test]
+    fn registers_and_resolves_handle() {
+        let (env, client, _) = setup();
+
+        let owner = Address::generate(&env);
+        let id = register_test_provider(&env, &client, &owner);
+
+        client.register_handle(
+            &id,
+            &String::from_str(&env, "fx-oracle"),
+        );
+
+        let resolved = client.resolve_handle(
+            &String::from_str(&env, "fx-oracle"),
+        );
+
+        assert_eq!(resolved, id);
+    }
+
+    #[test]
+    fn rejects_duplicate_handle() {
+        let (env, client, _) = setup();
+
+        let owner1 = Address::generate(&env);
+        let owner2 = Address::generate(&env);
+
+        let id1 = register_test_provider(&env, &client, &owner1);
+        let id2 = register_test_provider(&env, &client, &owner2);
+
+        let handle = String::from_str(&env, "fx-oracle");
+
+        client.register_handle(&id1, &handle);
+
+        let result = client.try_register_handle(&id2, &handle);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_handle() {
+        let (env, client, _) = setup();
+
+        let owner = Address::generate(&env);
+        let id = register_test_provider(&env, &client, &owner);
+
+        let invalid = String::from_str(&env, "FX Oracle");
+
+        let result = client.try_register_handle(&id, &invalid);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_handle_for_unknown_provider() {
+        let (env, client, _) = setup();
+
+        let result = client.try_register_handle(
+            &999,
+            &String::from_str(&env, "fx-oracle"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn updates_provider() {
         let (env, client, _) = setup();
+
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -417,6 +651,7 @@ mod test {
         );
 
         let new_meta = BytesN::from_array(&env, &[9u8; 32]);
+
         client.update_provider(
             &id,
             &20u64,
@@ -425,15 +660,18 @@ mod test {
         );
 
         let p = client.get_provider(&id);
+
         assert_eq!(p.price_stroops, 20);
     }
 
     #[test]
     fn deactivates_and_activates() {
         let (env, client, _) = setup();
+
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -443,8 +681,10 @@ mod test {
             &meta,
             &Symbol::new(&env, "data"),
         );
+
         client.deactivate(&id);
         assert_eq!(client.get_provider(&id).active, false);
+
         client.activate(&id);
         assert_eq!(client.get_provider(&id).active, true);
     }
@@ -452,10 +692,12 @@ mod test {
     #[test]
     fn logs_payment_and_rejects_duplicate() {
         let (env, client, _) = setup();
+
         let owner = Address::generate(&env);
         let payer = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -467,21 +709,36 @@ mod test {
         );
 
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
-        let pid1 = client.log_payment(&id, &payer, &50_000u64, &tx_hash);
+
+        let pid1 = client.log_payment(
+            &id,
+            &payer,
+            &50_000u64,
+            &tx_hash,
+        );
+
         assert_eq!(pid1, 1);
 
-        // Duplicado debe fallar
-        let result = client.try_log_payment(&id, &payer, &50_000u64, &tx_hash);
+        let result = client.try_log_payment(
+            &id,
+            &payer,
+            &50_000u64,
+            &tx_hash,
+        );
+
         assert!(result.is_err());
     }
 
     #[test]
     fn lists_providers_in_range() {
         let (env, client, _) = setup();
+
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+
         for i in 0..5 {
             let owner = Address::generate(&env);
+
             let _ = client.register_provider(
                 &owner,
                 &String::from_str(&env, "P"),
@@ -492,17 +749,24 @@ mod test {
                 &Symbol::new(&env, "data"),
             );
         }
+
         let list = client.list_providers(&1, &5);
+
         assert_eq!(list.len(), 5);
     }
 
     #[test]
     fn ledger_timestamp_used() {
         let (env, client, _) = setup();
-        env.ledger().with_mut(|li| li.timestamp = 1_700_000_000);
+
+        env.ledger().with_mut(|li| {
+            li.timestamp = 1_700_000_000
+        });
+
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -512,7 +776,9 @@ mod test {
             &meta,
             &Symbol::new(&env, "data"),
         );
+
         let p = client.get_provider(&id);
+
         assert_eq!(p.created_at, 1_700_000_000);
     }
 }
