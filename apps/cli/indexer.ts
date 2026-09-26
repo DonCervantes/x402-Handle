@@ -10,10 +10,12 @@
  */
 import { stellar } from "sources";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
-if (!CONTRACT_ID) {
-  console.error("Missing REGISTRY_CONTRACT_ID in .env");
-  process.exit(1);
+export function getRegistryContractId(): string {
+  const contractId = process.env.REGISTRY_CONTRACT_ID;
+  if (!contractId) {
+    throw new Error("Missing REGISTRY_CONTRACT_ID in .env");
+  }
+  return contractId;
 }
 
 const POLL_LIMIT = 1000;
@@ -40,21 +42,21 @@ type RawPaymentLog = {
   timestamp: bigint;
 };
 
-function providerRowId(providerId: bigint): string {
-  return `${CONTRACT_ID}/${providerId}`;
+export function providerRowId(providerId: bigint, contractId?: string): string {
+  const cid = contractId ?? process.env.REGISTRY_CONTRACT_ID ?? "";
+  return `${cid}/${providerId}`;
 }
 
-function stroopsToUsdc(stroops: bigint): string {
+export function stroopsToUsdc(stroops: bigint): string {
   return (Number(stroops) / 10_000_000).toFixed(7);
 }
 
-function tsToIso(unixSeconds: bigint): string {
+export function tsToIso(unixSeconds: bigint): string {
   return new Date(Number(unixSeconds) * 1000).toISOString();
 }
 
 async function getLastLedger(): Promise<number> {
-  const rows =
-    await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
+  const rows = await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
   if (rows.length > 0) return Number(rows[0].value);
   // Primer arranque: arrancar ~30 min antes del último ledger para no
   // depender de conocer el ledger exacto del deploy.
@@ -71,12 +73,13 @@ async function setLastLedger(ledger: number): Promise<void> {
 }
 
 async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<void> {
+  const contractId = getRegistryContractId();
   await Bun.sql`
     INSERT INTO providers (
       id, contract_id, provider_id, name, endpoint, price_usdc,
       owner_account, payment_asset, category, active, created_at, last_seen_at, metadata
     ) VALUES (
-      ${providerRowId(p.id)}, ${CONTRACT_ID}, ${Number(p.id)}, ${p.name}, ${p.endpoint},
+      ${providerRowId(p.id, contractId)}, ${contractId}, ${Number(p.id)}, ${p.name}, ${p.endpoint},
       ${stroopsToUsdc(p.price_stroops)}, ${p.owner}, 'USDC', ${p.category},
       ${p.active}, ${tsToIso(p.created_at)}, ${ledgerClosedAt}, '{}'::jsonb
     )
@@ -91,22 +94,24 @@ async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<v
 }
 
 async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> {
+  const contractId = getRegistryContractId();
   const txHashHex = Buffer.from(log.tx_hash).toString("hex");
   await Bun.sql`
     INSERT INTO payments (
       tx_hash, provider_id, payer_account, amount_usdc, ledger, paid_at
     ) VALUES (
-      ${txHashHex}, ${providerRowId(log.provider_id)}, ${log.payer},
+      ${txHashHex}, ${providerRowId(log.provider_id, contractId)}, ${log.payer},
       ${stroopsToUsdc(log.amount)}, ${ledger}, ${tsToIso(log.timestamp)}
     )
     ON CONFLICT (tx_hash) DO NOTHING
   `;
 }
 
-async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
+export async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
+  const contractId = getRegistryContractId();
   const fromLedger = await getLastLedger();
   const events = await stellar.getContractEvents({
-    contractId: CONTRACT_ID!,
+    contractId,
     fromLedger,
     limit: POLL_LIMIT,
   });
@@ -136,18 +141,25 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
   return { ledger: nextFrom, providers: providerCount, payments: paymentCount };
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
+  const contractId = process.env.REGISTRY_CONTRACT_ID;
+  if (!contractId) {
+    console.error("Missing REGISTRY_CONTRACT_ID in .env");
+    process.exit(1);
+  }
   const watch = process.argv.includes("--watch");
   do {
     const result = await runOnce();
     console.log(
-      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments}`
+      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments}`,
     );
     if (watch) await new Promise((r) => setTimeout(r, 5000));
   } while (watch);
 }
 
-main().catch((err) => {
-  console.error("[indexer] fatal:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("[indexer] fatal:", err);
+    process.exit(1);
+  });
+}
