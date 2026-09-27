@@ -11,17 +11,13 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { randomUUID } from "node:crypto";
 
-import {
-  X402_VERSION,
-  type X402Challenge,
-  type X402ServerConfig,
-} from "./types";
+import { X402_VERSION, type X402Challenge, type X402ServerConfig } from "./types";
 import { verifyUsdcPayment } from "./verify";
 import { defaultReplayCache, type ReplayCache } from "./replay-cache";
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  public: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 };
 
 /**
@@ -80,11 +76,11 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       }
     }
 
+    // Fast path barato: rechaza replays evidentes sin tocar Horizon. La
+    // decisión autoritativa NO es ésta sino el `consume()` de más abajo,
+    // porque entre este check y el claim hay un `await`.
     if (cache.has(txHash)) {
-      return c.json(
-        { error: "already_consumed", detail: "This payment was already used." },
-        402
-      );
+      return c.json({ error: "already_consumed", detail: "This payment was already used." }, 402);
     }
 
     // Si el cliente no envió memo, no podemos verificar sin él.
@@ -124,8 +120,16 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       return c.json({ error: result.reason, detail: result.detail }, 402);
     }
 
-    // ─── Pago válido: marcar consumido + callback opcional ───────────
-    cache.add(txHash);
+    // ─── Pago válido: reclamar el hash de forma atómica ──────────────
+    // `consume()` es insert-if-absent y síncrono: dos requests concurrentes que
+    // verificaron el mismo tx_hash (ambos pasaron el fast path `has()` antes
+    // del `await` de Horizon) llegan hasta acá, pero sólo uno puede reclamarlo.
+    // El que pierde no pasa al handler ni dispara el callback, así que un mismo
+    // tx_hash compra el recurso una sola vez.
+    if (!cache.consume(txHash)) {
+      return c.json({ error: "already_consumed", detail: "This payment was already used." }, 402);
+    }
+
     if (opts.onPaymentVerified) {
       try {
         await opts.onPaymentVerified({
