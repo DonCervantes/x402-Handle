@@ -9,6 +9,12 @@
  * Requiere en .env: REGISTRY_CONTRACT_ID, SOROBAN_RPC_URL, DATABASE_URL.
  */
 import { stellar } from "sources";
+import {
+  classifyEvent,
+  deactivateProvider,
+  reactivateProvider,
+  type RegistryEvent,
+} from "./src/indexer-events";
 
 const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
 if (!CONTRACT_ID) {
@@ -53,8 +59,7 @@ function tsToIso(unixSeconds: bigint): string {
 }
 
 async function getLastLedger(): Promise<number> {
-  const rows =
-    await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
+  const rows = await Bun.sql`SELECT value FROM indexer_state WHERE key = 'last_ledger'`;
   if (rows.length > 0) return Number(rows[0].value);
   // Primer arranque: arrancar ~30 min antes del último ledger para no
   // depender de conocer el ledger exacto del deploy.
@@ -90,6 +95,18 @@ async function upsertProvider(p: RawProvider, ledgerClosedAt: string): Promise<v
   `;
 }
 
+async function setProviderActive(
+  rowId: string,
+  active: boolean,
+  lastSeenAt: string,
+): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = ${active}, last_seen_at = ${lastSeenAt}
+    WHERE id = ${rowId}
+  `;
+}
+
 async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> {
   const txHashHex = Buffer.from(log.tx_hash).toString("hex");
   await Bun.sql`
@@ -103,7 +120,13 @@ async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> 
   `;
 }
 
-async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
+async function runOnce(): Promise<{
+  ledger: number;
+  providers: number;
+  payments: number;
+  deactivated: number;
+  reactivated: number;
+}> {
   const fromLedger = await getLastLedger();
   const events = await stellar.getContractEvents({
     contractId: CONTRACT_ID!,
@@ -113,16 +136,39 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
 
   let providerCount = 0;
   let paymentCount = 0;
+  let deactivatedCount = 0;
+  let reactivatedCount = 0;
   let maxLedger = fromLedger;
 
   for (const ev of events) {
-    const kind = ev.topics?.[1];
-    if (kind === "prov_reg" || kind === "prov_upd") {
-      await upsertProvider(ev.value as RawProvider, ev.timestamp);
-      providerCount++;
-    } else if (kind === "pay_log") {
-      await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
-      paymentCount++;
+    const action = classifyEvent(ev as RegistryEvent);
+    switch (action.kind) {
+      case "provider_upsert": {
+        await upsertProvider(ev.value as RawProvider, ev.timestamp);
+        providerCount++;
+        break;
+      }
+      case "payment_upsert": {
+        await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
+        paymentCount++;
+        break;
+      }
+      case "provider_off": {
+        // Mark inactive instead of deleting: payments reference the provider
+        // row and the audit history must survive deactivation.
+        const toggle = deactivateProvider(CONTRACT_ID!, action.providerId, ev.timestamp);
+        await setProviderActive(toggle.rowId, toggle.active, toggle.lastSeenAt);
+        deactivatedCount++;
+        break;
+      }
+      case "provider_on": {
+        const toggle = reactivateProvider(CONTRACT_ID!, action.providerId, ev.timestamp);
+        await setProviderActive(toggle.rowId, toggle.active, toggle.lastSeenAt);
+        reactivatedCount++;
+        break;
+      }
+      default:
+        break;
     }
     if (ev.ledger > maxLedger) maxLedger = ev.ledger;
   }
@@ -133,7 +179,13 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
   const nextFrom = Math.max(maxLedger + 1, fromLedger, Math.min(latest, fromLedger));
   await setLastLedger(events.length > 0 ? maxLedger + 1 : Math.max(fromLedger, latest - 1));
 
-  return { ledger: nextFrom, providers: providerCount, payments: paymentCount };
+  return {
+    ledger: nextFrom,
+    providers: providerCount,
+    payments: paymentCount,
+    deactivated: deactivatedCount,
+    reactivated: reactivatedCount,
+  };
 }
 
 async function main(): Promise<void> {
@@ -141,7 +193,7 @@ async function main(): Promise<void> {
   do {
     const result = await runOnce();
     console.log(
-      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments}`
+      `[indexer] ledger=${result.ledger} providers_seen=${result.providers} payments_seen=${result.payments} deactivated=${result.deactivated} reactivated=${result.reactivated}`,
     );
     if (watch) await new Promise((r) => setTimeout(r, 5000));
   } while (watch);
