@@ -12,9 +12,12 @@ describe("x402Stellar amount config", () => {
     ["0.00000001"],
     ["-1"],
   ])("rejects amountUsdc %p at setup", (amountUsdc) => {
-    expect(() => x402Stellar({ destination: ACCOUNT, amountUsdc, network: "testnet" })).toThrow(
-      /invalid USDC amount/,
-    );
+    // Cast keeps this test independent of other required middleware options:
+    // the amount check must throw before any of them are read.
+    const opts = { destination: ACCOUNT, amountUsdc, network: "testnet" } as Parameters<
+      typeof x402Stellar
+    >[0];
+    expect(() => x402Stellar(opts)).toThrow(/invalid USDC amount/);
   });
 });
 
