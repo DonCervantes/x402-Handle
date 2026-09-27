@@ -242,7 +242,7 @@ impl FloviaRegistry {
     /// Devuelve los providers en rango [from_id, to_id] (inclusive).
     /// Si un id no existe, se omite. Pensado para paginación desde el indexer.
     pub fn list_providers(env: Env, from_id: u64, to_id: u64) -> Vec<Provider> {
-        if from_id == 0 || to_id < from_id {
+        if from_id == 0 || to_id < from_id || (to_id - from_id) >= 100 {
             panic_with_error!(&env, Error::InvalidArgument);
         }
         let mut out: Vec<Provider> = vec![&env];
@@ -338,7 +338,7 @@ impl FloviaRegistry {
         from_id: u64,
         to_id: u64,
     ) -> Vec<PaymentLog> {
-        if from_id == 0 || to_id < from_id {
+        if from_id == 0 || to_id < from_id || (to_id - from_id) >= 100 {
             panic_with_error!(&env, Error::InvalidArgument);
         }
         let mut out: Vec<PaymentLog> = vec![&env];
@@ -494,6 +494,20 @@ mod test {
         }
         let list = client.list_providers(&1, &5);
         assert_eq!(list.len(), 5);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn lists_providers_oversized_range_fails() {
+        let (env, client, _) = setup();
+        client.list_providers(&1, &101);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #6)")]
+    fn lists_payments_oversized_range_fails() {
+        let (env, client, _) = setup();
+        client.list_payments(&1, &1, &101);
     }
 
     #[test]

@@ -139,7 +139,7 @@ struct PaymentLog {
 | `deactivate(id)` | owner of provider | Sets `active = false` |
 | `log_payment(provider_id, payer, amount, tx_hash)` | open (anyone can attest) | Inserts a `PaymentLog` if not duplicate, emits `payment_logged` |
 | `get_provider(id)` | read | Returns provider |
-| `list_providers()` | read | Returns all (paginated in production) |
+| `list_providers()` | read | Returns list of providers (max page size 100) |
 
 ### 3.4 Trust assumptions
 
