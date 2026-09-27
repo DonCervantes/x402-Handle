@@ -1,5 +1,13 @@
 // code/x402-stellar-middleware/src/index.ts
 export { x402Stellar } from "./server";
+export {
+  compareUsdc,
+  isUsdcAmount,
+  meetsUsdcAmount,
+  parseUsdcToStroops,
+  stroopsToUsdc,
+  STROOPS_PER_USDC,
+} from "./amount";
 export { x402Pay } from "./client";
 export { verifyUsdcPayment } from "./verify";
 export { createReplayCache, defaultReplayCache } from "./replay-cache";

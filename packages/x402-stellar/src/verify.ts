@@ -5,6 +5,7 @@
 // contra el challenge esperado.
 
 import { Horizon } from "@stellar/stellar-sdk";
+import { isUsdcAmount, meetsUsdcAmount, parseUsdcToStroops } from "./amount";
 import type { VerifyResult, X402Challenge } from "./types";
 
 const HORIZON_URLS = {
@@ -40,6 +41,8 @@ export interface VerifyOpts {
  * NUNCA confía en el cliente: todo se valida contra Horizon.
  */
 export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult> {
+  // Fail loudly on a misconfigured price rather than comparing against NaN.
+  parseUsdcToStroops(opts.expected.amountUsdc);
   const horizonUrl = opts.horizonUrl ?? HORIZON_URLS[opts.expected.network];
   const expectedIssuer = opts.expected.usdcIssuer ?? USDC_ISSUERS[opts.expected.network];
   const server = new Horizon.Server(horizonUrl);
@@ -102,7 +105,7 @@ export async function verifyUsdcPayment(opts: VerifyOpts): Promise<VerifyResult>
     };
   }
 
-  if (Number(payment.amount) < Number(opts.expected.amountUsdc)) {
+  if (!isUsdcAmount(payment.amount) || !meetsUsdcAmount(payment.amount, opts.expected.amountUsdc)) {
     return {
       ok: false,
       reason: "underpayment",

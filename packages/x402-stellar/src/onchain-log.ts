@@ -13,6 +13,7 @@ import {
   Address,
   nativeToScVal,
 } from "@stellar/stellar-sdk";
+import { parseUsdcToStroops } from "./amount";
 
 export interface OnChainLogOpts {
   contractId: string;
@@ -36,7 +37,7 @@ export async function logPaymentOnChain(
   const contract = new Contract(opts.contractId);
 
   const account = await server.getAccount(caller.publicKey());
-  const amountStroops = BigInt(Math.round(Number(payment.amount) * 10_000_000));
+  const amountStroops = parseUsdcToStroops(payment.amount);
   const txHashBytes = Buffer.from(payment.txHash, "hex");
 
   const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase })

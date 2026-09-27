@@ -1,3 +1,4 @@
+import { compareUsdc, isUsdcAmount, parseUsdcToStroops, stroopsToUsdc } from "./amount";
 import type { X402Challenge } from "./types";
 
 export interface SponsorshipPolicy {
@@ -49,45 +50,28 @@ export function decideSponsorship(
   if (request.challenge.destination !== request.provider) {
     return { sponsored: false, reason: "challenge_not_bound" };
   }
-  if (!isNonNegativeDecimal(request.requestedAmountUsdc) ||
+  if (!isUsdcAmount(request.requestedAmountUsdc) ||
       request.requestedAmountUsdc !== request.challenge.amount) {
     return { sponsored: false, reason: "amount_mismatch" };
   }
-  if (!isNonNegativeDecimal(request.spentTodayUsdc)) {
+  if (!isUsdcAmount(request.spentTodayUsdc)) {
     return { sponsored: false, reason: "invalid_policy" };
   }
 
-  if (decimalCompare(request.spentTodayUsdc, policy.dailyCapUsdc) > 0) {
+  if (compareUsdc(request.spentTodayUsdc, policy.dailyCapUsdc) > 0) {
     return { sponsored: false, reason: "daily_cap_exceeded" };
   }
   const remaining = decimalSub(policy.dailyCapUsdc, request.spentTodayUsdc);
-  if (decimalCompare(request.requestedAmountUsdc, remaining) > 0) {
+  if (compareUsdc(request.requestedAmountUsdc, remaining) > 0) {
     return { sponsored: false, reason: "daily_cap_exceeded" };
   }
   return { sponsored: true, remainingDailyCapUsdc: decimalSub(remaining, request.requestedAmountUsdc) };
 }
 
 function isPositiveDecimal(value: string): boolean {
-  return isNonNegativeDecimal(value) && Number(value) > 0;
-}
-
-function isNonNegativeDecimal(value: string): boolean {
-  return /^\d+(?:\.\d{1,7})?$/.test(value) && Number.isFinite(Number(value));
-}
-
-function decimalCompare(left: string, right: string): number {
-  const [li, lf = ""] = left.split(".");
-  const [ri, rf = ""] = right.split(".");
-  const leftFixed = BigInt(`${li}${lf.padEnd(7, "0")}`);
-  const rightFixed = BigInt(`${ri}${rf.padEnd(7, "0")}`);
-  return leftFixed < rightFixed ? -1 : leftFixed > rightFixed ? 1 : 0;
+  return isUsdcAmount(value) && parseUsdcToStroops(value) > 0n;
 }
 
 function decimalSub(left: string, right: string): string {
-  const [li, lf = ""] = left.split(".");
-  const [ri, rf = ""] = right.split(".");
-  const result = BigInt(`${li}${lf.padEnd(7, "0")}`) - BigInt(`${ri}${rf.padEnd(7, "0")}`);
-  const integer = result / 10_000_000n;
-  const fraction = (result % 10_000_000n).toString().padStart(7, "0").replace(/0+$/, "");
-  return fraction ? `${integer}.${fraction}` : integer.toString();
+  return stroopsToUsdc(parseUsdcToStroops(left) - parseUsdcToStroops(right));
 }

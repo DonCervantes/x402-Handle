@@ -18,6 +18,7 @@ import {
   Networks,
 } from "@stellar/stellar-sdk";
 
+import { parseUsdcToStroops } from "./amount";
 import { X402ChallengeSchema, type X402Challenge } from "./types";
 
 const HORIZON_URLS = {
@@ -35,8 +36,11 @@ export interface X402PayOpts {
   fetchInit?: RequestInit;
   /** Opcional: factory de fetch (default: globalThis.fetch) */
   fetchImpl?: typeof fetch;
-  /** Opcional: máximo monto que el agente está dispuesto a pagar (USDC) */
-  maxAmountUsdc?: number;
+  /**
+   * Opcional: máximo monto que el agente está dispuesto a pagar (USDC).
+   * Prefer a decimal string ("0.01"); numbers are rounded to 7 decimals.
+   */
+  maxAmountUsdc?: string | number;
   /** Opcional: timeout de espera de confirmación on-chain en ms (default 30s) */
   confirmationTimeoutMs?: number;
 }
@@ -82,8 +86,9 @@ export async function x402Pay(opts: X402PayOpts): Promise<X402PayResult> {
   const challengeRaw = await firstRes.json();
   const challenge: X402Challenge = X402ChallengeSchema.parse(challengeRaw);
 
-  // 3) Guard rail: max amount
-  if (opts.maxAmountUsdc != null && Number(challenge.amount) > opts.maxAmountUsdc) {
+  // 3) Guard rail: max amount (compared exactly, in stroops)
+  const challengeStroops = parseUsdcToStroops(challenge.amount);
+  if (opts.maxAmountUsdc != null && challengeStroops > maxStroops(opts.maxAmountUsdc)) {
     throw new Error(
       `x402Pay: challenge amount ${challenge.amount} exceeds maxAmountUsdc ${opts.maxAmountUsdc}`
     );
@@ -138,6 +143,10 @@ export async function x402Pay(opts: X402PayOpts): Promise<X402PayResult> {
     },
     elapsedMs: Date.now() - t0,
   };
+}
+
+function maxStroops(max: string | number): bigint {
+  return parseUsdcToStroops(typeof max === "number" ? max.toFixed(7) : max);
 }
 
 async function tryJson(res: Response): Promise<unknown | undefined> {

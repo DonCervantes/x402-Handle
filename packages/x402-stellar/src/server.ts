@@ -16,6 +16,7 @@ import {
   type X402Challenge,
   type X402ServerConfig,
 } from "./types";
+import { parseUsdcToStroops } from "./amount";
 import { verifyUsdcPayment } from "./verify";
 import { defaultReplayCache, type ReplayCache } from "./replay-cache";
 
@@ -37,6 +38,8 @@ export interface X402StellarMiddlewareOpts extends X402ServerConfig {
 }
 
 export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler {
+  // Fail fast at startup on a price that cannot be compared exactly.
+  parseUsdcToStroops(opts.amountUsdc);
   const cache = opts.replayCache ?? defaultReplayCache;
   const ttl = opts.challengeTtlSec ?? 300;
   const issuer = opts.usdcIssuer ?? USDC_ISSUERS[opts.network];
