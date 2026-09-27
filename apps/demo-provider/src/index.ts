@@ -8,18 +8,41 @@
  *   bun --filter=demo-provider start
  */
 
+import { SQL } from "bun";
 import { Hono } from "hono";
-import { x402Stellar, logPaymentOnChain } from "@flovia/x402-stellar";
+import {
+  createMemoryReplayStore,
+  createPostgresReplayStore,
+  logPaymentOnChain,
+  type ReplayStore,
+  x402Stellar,
+} from "@flovia/x402-stellar";
 
 const DESTINATION = process.env.DEMO_PROVIDER_PUBLIC;
 const NETWORK = (process.env.STELLAR_NETWORK ?? "testnet") as "testnet" | "public";
 const PORT = Number(process.env.DEMO_PROVIDER_PORT ?? 5402);
 const REGISTRY_CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
 const PROVIDER_ID = 1n; // FX Rates Oracle, sembrado en ticket 3.3
+const REPLAY_DATABASE_URL = process.env.X402_REPLAY_DATABASE_URL;
 
 if (!DESTINATION) {
   console.error("Missing DEMO_PROVIDER_PUBLIC in env");
   process.exit(1);
+}
+
+// Consumed payment hashes must survive restarts and be shared by replicas.
+async function createReplayStore(): Promise<ReplayStore> {
+  if (REPLAY_DATABASE_URL) {
+    const store = createPostgresReplayStore({ sql: new SQL(REPLAY_DATABASE_URL) });
+    await store.ensureSchema();
+    return store;
+  }
+  if (NETWORK === "public") {
+    console.error("X402_REPLAY_DATABASE_URL is required on the public network");
+    process.exit(1);
+  }
+  console.warn("[x402] X402_REPLAY_DATABASE_URL unset — using in-memory replay store (dev only)");
+  return createMemoryReplayStore();
 }
 
 const app = new Hono();
@@ -34,6 +57,7 @@ app.use(
     destination: DESTINATION,
     amountUsdc: "0.005",
     network: NETWORK,
+    replayStore: await createReplayStore(),
     onPaymentVerified: async ({ txHash, payer, amount, memo }) => {
       console.log(`[x402] payment verified — tx:${txHash.slice(0, 10)}... payer:${payer.slice(0, 8)}... amount:${amount} USDC memo:${memo}`);
       // Ticket 3.6 — espejar el pago en el registry on-chain (opcional, best-effort)

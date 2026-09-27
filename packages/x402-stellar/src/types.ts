@@ -41,6 +41,19 @@ export interface X402ServerConfig {
     memo: string;
   }) => Promise<void> | void;
   /**
+   * Optional settlement gate awaited after the payment is verified and its
+   * hash claimed, but before the resource is served. If it throws, the
+   * request gets 402 `settlement_failed` and the hash stays consumed.
+   * Wire it to logPaymentOnChain to require the Soroban registry's
+   * TxConsumed entry (duplicates panic with PaymentAlreadyLogged).
+   */
+  settlePayment?: (info: {
+    txHash: string;
+    payer: string;
+    amount: string;
+    memo: string;
+  }) => Promise<void>;
+  /**
    * Si está presente, el middleware sólo acepta requests cuyo path
    * matchee este pattern (regex). Útil para mezclar endpoints pagos y libres.
    */

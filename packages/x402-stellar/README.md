@@ -14,7 +14,9 @@ src/
 ├── server.ts       # middleware estilo Hono/Express
 ├── client.ts       # helper para agentes (paga + reintenta)
 ├── verify.ts       # verificación on-chain (consulta Horizon)
-└── replay-cache.ts # idempotencia por tx_hash
+├── replay-store.ts          # ReplayStore contract + in-memory store (tests/dev)
+├── replay-store-postgres.ts # durable store: INSERT ... ON CONFLICT DO NOTHING
+└── replay-store-redis.ts    # durable store: SET NX, no TTL
 ```
 
 ## Instalación (en el monorepo)
@@ -22,8 +24,12 @@ src/
 Por ahora vive dentro del repo como `@flovia/x402-stellar`. Para publicarlo a npm más adelante.
 
 ```ts
-import { x402Stellar } from "@flovia/x402-stellar";
+import { SQL } from "bun";
+import { createPostgresReplayStore, x402Stellar } from "@flovia/x402-stellar";
 import { Hono } from "hono";
+
+const replayStore = createPostgresReplayStore({ sql: new SQL(process.env.X402_REPLAY_DATABASE_URL!) });
+await replayStore.ensureSchema();
 
 const app = new Hono();
 
@@ -33,6 +39,7 @@ app.use(
     destination: process.env.PROVIDER_ACCOUNT!,      // G...
     amountUsdc: "0.005",
     network: "testnet",
+    replayStore,
     onPaymentVerified: async ({ txHash, payer }) => {
       // opcional: log_payment al contrato Soroban
     },
@@ -43,6 +50,32 @@ app.get("/api/rate", (c) => c.json({ pair: "EUR/USD", rate: 1.0843 }));
 
 export default app;
 ```
+
+## Replay protection
+
+A tx hash that bought a resource once can never buy it again. `replayStore` is required and must be shared by every replica and survive restarts:
+
+- `createPostgresReplayStore({ sql })` — recommended. The `tx_hash` primary key plus `INSERT ... ON CONFLICT DO NOTHING RETURNING` is an atomic set-if-absent. Call `ensureSchema()` at startup, or apply `postgresReplayStoreSchema()` in a migration.
+- `createRedisReplayStore({ client })` — `SET key value NX` with no TTL. Only durable if Redis runs with AOF persistence and `maxmemory-policy noeviction`.
+- `createMemoryReplayStore()` — tests and single-process local dev only.
+
+Consumed hashes never expire. Hashes are normalized to lowercase hex, so case variants of one payment are the same payment.
+
+Request flow: reject malformed hashes → skip known replays (`has`) → verify on Horizon → atomically `claim` the hash → await `settlePayment` if configured → serve. The hash is only claimed after verification succeeds, so a failed check does not burn a payment. If the store is unreachable, the middleware fails closed with `503 replay_store_unavailable`.
+
+### Requiring the on-chain `TxConsumed` entry
+
+To also require the Soroban registry's replay guard before serving, await the on-chain log in `settlePayment`. `log_payment` panics with `PaymentAlreadyLogged` for a hash already in `TxConsumed`, and the middleware then answers `402 settlement_failed`:
+
+```ts
+x402Stellar({
+  // ...
+  replayStore,
+  settlePayment: (payment) => logPaymentOnChain(registryOpts, payment),
+});
+```
+
+This adds a Soroban round-trip (several seconds) to each paid request. If settlement fails, the hash stays consumed rather than being released, because releasing it could reopen a replay.
 
 ## Cliente (agente)
 
@@ -77,7 +110,7 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 
 - **Sólo USDC.** Multi-asset queda para v2.
 - **Memo único** por challenge: garantiza idempotencia.
-- **Replay protection** local con TTL de 24h por defecto.
+- **Replay protection** durable (Postgres/Redis), atomic, never expires.
 - **Verificación contra Horizon**, nunca contra el cliente.
 
 ## Tests

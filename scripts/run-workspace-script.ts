@@ -11,6 +11,7 @@ const workspaces = [
   "packages/contracts",
   "packages/sources",
   "packages/intelligence",
+  "packages/x402-stellar",
   "apps/cli",
   "apps/data",
   "apps/bff",
