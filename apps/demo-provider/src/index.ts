@@ -45,7 +45,7 @@ app.use(
               providerId: PROVIDER_ID,
               callerSecret: process.env.DEMO_PROVIDER_SECRET!,
               network: NETWORK,
-              sorobanUrl: process.env.SOROBAN_RPC_URL,
+              sorobanUrl: process.env.STELLAR_RPC_URL ?? process.env.SOROBAN_RPC_URL,
             },
             { txHash, payer, amount }
           );
