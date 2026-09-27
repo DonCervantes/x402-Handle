@@ -239,7 +239,7 @@ describe("BFF routes", () => {
       expect(response.status, path).toBe(200);
       expect(response.headers.get("content-type"), path).toContain("application/json");
       await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({ service: "flovia-bff", status: "ok" }),
+        expect.objectContaining({ service: "handle-bff", status: "ok" }),
       );
     }
   });
@@ -255,7 +255,7 @@ describe("BFF routes", () => {
 
     expect(body).toEqual({
       status: "ok",
-      service: "flovia-bff",
+      service: "handle-bff",
       commitHash: runtimeMetadata.commitHash,
       startedAt: runtimeMetadata.startedAt,
       memory: expect.any(Object),
@@ -278,7 +278,7 @@ describe("BFF routes", () => {
     expect(response.status).toBe(503);
     expect(body).toEqual({
       status: "loading",
-      service: "flovia-bff",
+      service: "handle-bff",
       analyticsStatus: "loading",
     });
   });
@@ -314,7 +314,7 @@ describe("BFF routes", () => {
     expect(readyResponse.status).toBe(200);
     expect(readyBody).toEqual({
       status: "ok",
-      service: "flovia-bff",
+      service: "handle-bff",
       analyticsStatus: "fallback",
     });
     expect(providersResponse.status).toBe(200);
@@ -334,7 +334,7 @@ describe("BFF routes", () => {
 
       expect(body).toEqual({
         status: "ok",
-        service: "flovia-bff",
+        service: "handle-bff",
         commitHash: runtimeMetadata.commitHash,
         startedAt: runtimeMetadata.startedAt,
         memory: expect.any(Object),
@@ -355,7 +355,7 @@ describe("BFF routes", () => {
 
     expect(body).toEqual({
       status: "ok",
-      service: "flovia-bff",
+      service: "handle-bff",
       commitHash: runtimeMetadata.commitHash,
       startedAt: runtimeMetadata.startedAt,
       memory: expect.any(Object),
