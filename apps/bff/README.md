@@ -1,4 +1,4 @@
-# Flovia BFF
+# HANDLE BFF
 
 The BFF is a read-only demo API boundary for the frontend demo.
 
@@ -16,8 +16,8 @@ bun run verify
 
 ## Endpoints
 
-- `GET /` -> `{ status: "ok", service: "flovia-bff" }`
-- `GET /health` -> `{ status: "ok", service: "flovia-bff" }`
+- `GET /` -> `{ status: "ok", service: "handle-bff" }`
+- `GET /health` -> `{ status: "ok", service: "handle-bff" }`
 - `GET /customers` -> Phase B customer list projection
 - `GET /customers/:address/profile` -> Phase B wallet profile projection
 - `GET /customers/:address/intelligence` -> Phase B customer intelligence read model

@@ -1,4 +1,4 @@
-# 🌊 Flovia
+# 🌊 HANDLE
 
 > Turn agentic payment signals into market intelligence.
 
@@ -14,9 +14,9 @@
 
 ---
 
-## 🚀 What is Flovia?
+## 🚀 What is HANDLE?
 
-**Flovia** explores the emerging **agentic payments** layer: HTTP-native payment flows where agents, apps, and services can discover a paid resource, receive payment requirements, satisfy them programmatically, and continue without manual signup or API-key provisioning.
+**HANDLE** explores the emerging **agentic payments** layer: HTTP-native payment flows where agents, apps, and services can discover a paid resource, receive payment requirements, satisfy them programmatically, and continue without manual signup or API-key provisioning.
 
 It combines x402 / MPP-style payment discovery, onchain activity signals, customer intelligence pipelines, a read-only demo API, and a Next.js frontend to reveal:
 
@@ -27,6 +27,17 @@ It combines x402 / MPP-style payment discovery, onchain activity signals, custom
 - how Solana-style high-frequency payment signals can shape market intelligence
 
 The current implementation uses `contract / source / intelligence` layers across `packages/*`, consumed by `apps/cli`, `apps/bff`, and `apps/frontend`.
+
+### Naming
+
+There is one product: **HANDLE**. "Flovia" is a retired product name, not a second product or a sub-brand — every user-facing surface in this repository (this README, the BFF's advertised service name, payment memos, UI copy) says HANDLE.
+
+Two published npm packages keep their original scope, because renaming an import specifier is a breaking change for downstream consumers:
+
+- `@flovia/agent-sdk`
+- `@flovia/x402-stellar`
+
+Those are package coordinates, not product names. The full decision — including the wire fields and repository paths that intentionally keep the old spelling — is recorded in [`docs/branding.md`](docs/branding.md).
 
 Stellar Public releases are gated by the [mainnet go-live checklist](docs/stellar-mainnet-go-live-checklist.md); the registry must not be deployed publicly until it has a signed go/no-go approval.
 
@@ -49,21 +60,21 @@ This creates a new protocol and intelligence surface:
 
 > **Agentic payments** — programmatic payment flows that let software agents and services exchange value inline with resource access.
 
-Flovia does not treat MPP as “Machine Payable Products.” MPP means **Machine Payments Protocol**: an HTTP-oriented protocol for challenge / credential / receipt payment flows. Alongside x402, it points toward a world where payments become part of the request path itself.
+HANDLE does not treat MPP as “Machine Payable Products.” MPP means **Machine Payments Protocol**: an HTTP-oriented protocol for challenge / credential / receipt payment flows. Alongside x402, it points toward a world where payments become part of the request path itself.
 
-Flovia explores the intelligence layer around that protocol-driven activity: what is being sold, who is paying, which rails are used, and where repeatable demand is forming.
+HANDLE explores the intelligence layer around that protocol-driven activity: what is being sold, who is paying, which rails are used, and where repeatable demand is forming.
 
 ---
 
 ## 🧭 Protocol context
 
-| Area | Practical meaning for Flovia |
+| Area | Practical meaning for HANDLE |
 | --- | --- |
 | **x402** | Uses HTTP `402 Payment Required` to let a server return payment requirements, receive a signed payment payload, and deliver the resource after verification / settlement. It is commonly associated with stablecoin settlement and facilitator services. |
 | **MPP** | Machine Payments Protocol. Generalizes the HTTP payment challenge pattern with `WWW-Authenticate: Payment`, `Authorization: Payment`, and `Payment-Receipt` semantics, aiming to support multiple payment methods and session-style flows. |
 | **Agentic payments** | The broader market pattern: agents, apps, and services pay for APIs, tools, content, data, or compute without traditional account setup, checkout, or long-lived API-key provisioning. |
 
-Flovia’s current PoC is an intelligence system around these flows, not an implementation of every payment protocol. It uses discovery data, fixture-backed source clients, and onchain-style signals to model how machine-payment adoption could be observed and ranked.
+HANDLE’s current PoC is an intelligence system around these flows, not an implementation of every payment protocol. It uses discovery data, fixture-backed source clients, and onchain-style signals to model how machine-payment adoption could be observed and ranked.
 
 ---
 
@@ -89,7 +100,7 @@ flowchart LR
 
 ---
 
-## ⚡ What Flovia reveals
+## ⚡ What HANDLE reveals
 
 | Signal | Insight |
 | --- | --- |
@@ -111,7 +122,7 @@ Solana is a useful signal source for agentic-payment market intelligence because
 - high-frequency usage patterns
 - strong agent, DePIN, API-commerce, and payment experimentation ecosystems
 
-Flovia currently treats Solana as a signal direction for onchain payment intelligence while keeping default verification deterministic and offline-first.
+HANDLE currently treats Solana as a signal direction for onchain payment intelligence while keeping default verification deterministic and offline-first.
 
 ---
 

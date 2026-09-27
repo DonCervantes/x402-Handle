@@ -313,11 +313,11 @@ export const createBffHandler = (
 
     switch (path) {
       case "/":
-        return json({ service: "flovia-bff", status: "ok" });
+        return json({ service: "handle-bff", status: "ok" });
       case "/health":
         return json({
           status: "ok",
-          service: "flovia-bff",
+          service: "handle-bff",
           commitHash: runtimeMetadata.commitHash,
           startedAt: runtimeMetadata.startedAt,
           memory: memoryUsageMib(),
@@ -328,7 +328,7 @@ export const createBffHandler = (
           return json(
             {
               status: "loading",
-              service: "flovia-bff",
+              service: "handle-bff",
               ...analyticsStatusBody(),
             },
             { status: 503 },
@@ -338,7 +338,7 @@ export const createBffHandler = (
           return json(
             {
               status: "unavailable",
-              service: "flovia-bff",
+              service: "handle-bff",
               ...analyticsStatusBody(),
             },
             { status: 503 },
@@ -346,7 +346,7 @@ export const createBffHandler = (
         }
         return json({
           status: "ok",
-          service: "flovia-bff",
+          service: "handle-bff",
           ...analyticsStatusBody(),
         });
       case "/aeo/x402": {

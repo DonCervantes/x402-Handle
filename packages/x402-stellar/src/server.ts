@@ -26,10 +26,16 @@ const USDC_ISSUERS = {
 
 /**
  * Genera un memo único por challenge: corto (28 bytes Stellar) y aleatorio.
- * Formato: "fl-<10hex>" → 13 chars, dentro del límite Stellar.
+ * Formato: "hnd-<10hex>" → 14 chars, dentro del límite Stellar.
+ *
+ * El prefijo es la etiqueta visible del pago y sigue la marca del producto
+ * (HANDLE) según docs/branding.md. El mismo middleware emite y valida el memo,
+ * así que el cambio de prefijo solo afecta a challenges emitidos antes de un
+ * despliegue y todavía sin liquidar: fallan con `memo_mismatch` y hay que
+ * volver a pedir el recurso.
  */
 function newMemo(): string {
-  return "fl-" + randomUUID().replace(/-/g, "").slice(0, 10);
+  return "hnd-" + randomUUID().replace(/-/g, "").slice(0, 10);
 }
 
 export interface X402StellarMiddlewareOpts extends X402ServerConfig {

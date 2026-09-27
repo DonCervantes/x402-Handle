@@ -21,4 +21,4 @@ Bun.serve({
   fetch: handler,
 });
 
-console.log(`Flovia BFF listening on http://localhost:${port}`);
+console.log(`HANDLE BFF listening on http://localhost:${port}`);
