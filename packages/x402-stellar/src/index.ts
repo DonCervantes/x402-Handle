@@ -4,6 +4,7 @@ export { x402Pay } from "./client";
 export { verifyUsdcPayment } from "./verify";
 export { createReplayCache, defaultReplayCache } from "./replay-cache";
 export { logPaymentOnChain } from "./onchain-log";
+export { getRegistryContractId, requireRegistryContractId } from "./registry-config";
 export { decideSponsorship } from "./sponsorship";
 export type {
   SponsorshipDecision,

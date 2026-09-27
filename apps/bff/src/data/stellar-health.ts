@@ -1,5 +1,6 @@
 // Ticket 4.8 — /stellar/health: checks de Horizon, Soroban RPC y DB.
 import { stellar } from "sources";
+import { getRegistryContractId } from "@flovia/x402-stellar";
 
 export type StellarHealth = {
   status: "ok" | "degraded";
@@ -30,6 +31,6 @@ export async function getStellarHealth(): Promise<StellarHealth> {
     horizon,
     soroban,
     database,
-    registryContractId: process.env.REGISTRY_CONTRACT_ID ?? null,
+    registryContractId: getRegistryContractId() ?? null,
   };
 }
