@@ -77,7 +77,9 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 
 - **Sólo USDC.** Multi-asset queda para v2.
 - **Memo único** por challenge: garantiza idempotencia.
-- **Replay protection** local con TTL de 24h por defecto.
+- **Replay protection** local con TTL de 24h por defecto. El hash se reclama con
+  `cache.consume(txHash)` — un insert-if-absent síncrono que se ejecuta *después* de verificar
+  el pago, así que dos requests concurrentes con el mismo `tx_hash` no pueden pasar los dos.
 - **Verificación contra Horizon**, nunca contra el cliente.
 
 ## Tests
