@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.1",

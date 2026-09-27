@@ -2,7 +2,12 @@
 export { x402Stellar } from "./server";
 export { x402Pay } from "./client";
 export { verifyUsdcPayment } from "./verify";
-export { createReplayCache, defaultReplayCache } from "./replay-cache";
+export { createMemoryReplayStore, normalizeTxHash } from "./replay-store";
+export {
+  createPostgresReplayStore,
+  postgresReplayStoreSchema,
+} from "./replay-store-postgres";
+export { createRedisReplayStore } from "./replay-store-redis";
 export { logPaymentOnChain } from "./onchain-log";
 export { decideSponsorship } from "./sponsorship";
 export type {
@@ -22,5 +27,12 @@ export type {
   VerifyResult,
   VerifyFailureReason,
 } from "./types";
-export type { ReplayCache } from "./replay-cache";
+export type { ReplayStore } from "./replay-store";
+export type {
+  PostgresReplaySql,
+  PostgresReplayStore,
+  PostgresReplayStoreOpts,
+} from "./replay-store-postgres";
+export type { RedisReplayClient, RedisReplayStoreOpts } from "./replay-store-redis";
+export type { X402StellarMiddlewareOpts } from "./server";
 export type { X402PayOpts, X402PayResult } from "./client";

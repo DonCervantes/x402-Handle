@@ -17,7 +17,7 @@ import {
   type X402ServerConfig,
 } from "./types";
 import { verifyUsdcPayment } from "./verify";
-import { defaultReplayCache, type ReplayCache } from "./replay-cache";
+import { normalizeTxHash, type ReplayStore } from "./replay-store";
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -33,11 +33,20 @@ function newMemo(): string {
 }
 
 export interface X402StellarMiddlewareOpts extends X402ServerConfig {
-  replayCache?: ReplayCache;
+  /**
+   * Durable store of consumed tx hashes. Required: an implicit in-process
+   * default would let payments be replayed after a restart or on another
+   * replica. Use createPostgresReplayStore / createRedisReplayStore in
+   * production; createMemoryReplayStore only for tests and local dev.
+   */
+  replayStore: ReplayStore;
+  /** Override for on-chain verification. Defaults to verifyUsdcPayment (Horizon). */
+  verifyPayment?: typeof verifyUsdcPayment;
 }
 
 export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler {
-  const cache = opts.replayCache ?? defaultReplayCache;
+  const store = opts.replayStore;
+  const verifyPayment = opts.verifyPayment ?? verifyUsdcPayment;
   const ttl = opts.challengeTtlSec ?? 300;
   const issuer = opts.usdcIssuer ?? USDC_ISSUERS[opts.network];
 
@@ -69,22 +78,35 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
     // ─── Con pago: verificar ───────────────────────────────────────
     // El cliente debe enviar: X-PAYMENT: <tx_hash>;memo=<memo>
     // (admitimos también sólo <tx_hash> y validamos memo from Horizon)
-    let txHash = paymentHeader.trim();
+    let rawTxHash = paymentHeader.trim();
     let expectedMemo: string | undefined;
     if (paymentHeader.includes(";")) {
       const parts = paymentHeader.split(";").map((s) => s.trim());
-      txHash = parts[0];
+      rawTxHash = parts[0];
       for (const p of parts.slice(1)) {
         const [k, v] = p.split("=");
         if (k === "memo") expectedMemo = v;
       }
     }
 
-    if (cache.has(txHash)) {
+    const txHash = normalizeTxHash(rawTxHash);
+    if (!txHash) {
       return c.json(
-        { error: "already_consumed", detail: "This payment was already used." },
+        { error: "invalid_tx_hash", detail: "X-PAYMENT must start with a 64-char hex tx hash." },
         402
       );
+    }
+
+    // Fast path: skip the Horizon round-trip for known replays. The atomic
+    // claim below is what actually guarantees single use.
+    let alreadyConsumed: boolean;
+    try {
+      alreadyConsumed = await store.has(txHash);
+    } catch (err) {
+      return replayStoreUnavailable(c, err);
+    }
+    if (alreadyConsumed) {
+      return alreadyConsumedResponse(c);
     }
 
     // Si el cliente no envió memo, no podemos verificar sin él.
@@ -108,7 +130,7 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       return c.json({ ...challenge, error: "missing_memo" }, 402);
     }
 
-    const result = await verifyUsdcPayment({
+    const result = await verifyPayment({
       txHash,
       expected: {
         destination: opts.destination,
@@ -124,8 +146,38 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       return c.json({ error: result.reason, detail: result.detail }, 402);
     }
 
-    // ─── Pago válido: marcar consumido + callback opcional ───────────
-    cache.add(txHash);
+    // ─── Valid payment: atomically consume, settle, then serve ──────
+    // Claim only after verification so a failed or not-yet-final payment is
+    // not burned. Concurrent redemptions of one hash race here; one wins.
+    let claimed: boolean;
+    try {
+      claimed = await store.claim(txHash);
+    } catch (err) {
+      return replayStoreUnavailable(c, err);
+    }
+    if (!claimed) {
+      return alreadyConsumedResponse(c);
+    }
+
+    if (opts.settlePayment) {
+      try {
+        await opts.settlePayment({
+          txHash: result.txHash,
+          payer: result.payer,
+          amount: result.amount,
+          memo: result.memo,
+        });
+      } catch (err) {
+        // The hash stays claimed: releasing it could re-open a replay if
+        // settlement partially succeeded (e.g. TxConsumed was written).
+        console.error("[x402-stellar] settlePayment failed:", err);
+        return c.json(
+          { error: "settlement_failed", detail: "Payment verified but settlement failed." },
+          402
+        );
+      }
+    }
+
     if (opts.onPaymentVerified) {
       try {
         await opts.onPaymentVerified({
@@ -150,4 +202,20 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
 
     await next();
   };
+}
+
+function alreadyConsumedResponse(c: Context) {
+  return c.json(
+    { error: "already_consumed", detail: "This payment was already used." },
+    402
+  );
+}
+
+function replayStoreUnavailable(c: Context, err: unknown) {
+  // Fail closed: without the replay store we cannot prove single use.
+  console.error("[x402-stellar] replay store unavailable:", err);
+  return c.json(
+    { error: "replay_store_unavailable", detail: "Payment could not be checked; retry later." },
+    503
+  );
 }
