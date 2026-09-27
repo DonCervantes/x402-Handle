@@ -85,3 +85,13 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 ```bash
 bun test
 ```
+
+## Soroban registry configuration
+
+The indexer, BFF health endpoint, and demo-provider payment logger all use the
+same `REGISTRY_CONTRACT_ID` environment variable. Set it to the deployed
+Soroban registry contract ID for the selected network, and set
+`SOROBAN_RPC_URL` to the matching RPC endpoint (for example,
+`https://soroban-testnet.stellar.org` for Testnet). Services that read or write
+registry state fail closed when the contract ID is missing; they never fall
+back to a hard-coded contract.
