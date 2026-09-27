@@ -15,6 +15,17 @@ export type FloviaOpts = {
   bffUrl?: string;
   /** Máximo monto USDC por call que el SDK aceptará pagar sin pedir confirmación explícita. */
   maxAmountUsdc?: number;
+  /**
+   * Allowlist de hosts de provider aceptados. Sólo los endpoints cuyo host
+   * matchee alguna entrada pueden pagarse (comodines de subdominio:
+   * `*.example.com`). Default: sin restricción de host, pero siempre HTTPS.
+   */
+  allowedHosts?: readonly string[];
+  /**
+   * Permite endpoints `http://`. Default `false`: un endpoint en claro puede
+   * ser reescrito en la ruta y desviar el pago. Usar sólo en desarrollo local.
+   */
+  allowInsecureEndpoint?: boolean;
 };
 
 export type RecommendOpts = {

@@ -37,6 +37,16 @@ export interface X402PayOpts {
   fetchImpl?: typeof fetch;
   /** Opcional: máximo monto que el agente está dispuesto a pagar (USDC) */
   maxAmountUsdc?: number;
+  /**
+   * Opcional: cuenta de destino esperada (G...). Si se especifica, el pago se
+   * aborta cuando el challenge del provider apunta a otra cuenta.
+   *
+   * Es el binding contra una fuente de verdad externa (p. ej. el `owner` del
+   * provider en el registry Soroban): el agente sólo firma un pago a la cuenta
+   * que ya conocía de antemano, así que un endpoint HTTP malicioso no puede
+   * redirigir el USDC cambiando el `destination` del 402.
+   */
+  expectedDestination?: string;
   /** Opcional: timeout de espera de confirmación on-chain en ms (default 30s) */
   confirmationTimeoutMs?: number;
 }
@@ -81,6 +91,26 @@ export async function x402Pay(opts: X402PayOpts): Promise<X402PayResult> {
   // 2) Parsear challenge
   const challengeRaw = await firstRes.json();
   const challenge: X402Challenge = X402ChallengeSchema.parse(challengeRaw);
+
+  // 2b) Pin de red: el challenge debe ser de la red que el agente está pagando.
+  //     Sin esto un endpoint respondía con un challenge de otra red y el agente
+  //     lo firmaba igual (el passphrase se elige desde `opts.network`, no desde
+  //     el challenge), gastando en una red distinta a la esperada.
+  if (challenge.network !== opts.network) {
+    throw new Error(
+      `x402Pay: challenge network mismatch (expected ${opts.network}, got ${challenge.network})`,
+    );
+  }
+
+  // 2c) Binding de destino: si el caller conoce de antemano la cuenta a la que
+  //     debe pagar (registry `owner`), el challenge tiene que coincidir. Esta
+  //     comprobación va acá —entre parsear el challenge y firmar— porque es el
+  //     único punto donde el destino que se va a firmar está garantizado.
+  if (opts.expectedDestination && challenge.destination !== opts.expectedDestination) {
+    throw new Error(
+      `x402Pay: challenge destination mismatch (expected ${opts.expectedDestination}, got ${challenge.destination})`,
+    );
+  }
 
   // 3) Guard rail: max amount
   if (opts.maxAmountUsdc != null && Number(challenge.amount) > opts.maxAmountUsdc) {
