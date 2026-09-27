@@ -9,10 +9,11 @@
   ],
   "scripts": {
     "check:imports": "bun scripts/check-import-boundaries.ts",
+    "check:stellar-deploy": "bun scripts/check-stellar-deploy.ts",
     "dev:docker": "docker compose -f docker-compose.yml -f docker-compose.dev.yaml up --watch --build",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "verify": "bun run check:imports && bun scripts/run-workspace-script.ts verify",
+    "verify": "bun run check:imports && bun run check:stellar-deploy && bun scripts/run-workspace-script.ts verify",
     "test": "bun scripts/run-workspace-script.ts test",
     "typecheck": "bun scripts/run-workspace-script.ts typecheck"
   },

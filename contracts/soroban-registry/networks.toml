@@ -1,0 +1,23 @@
+# HANDLE Stellar network profiles (reference; mirrors
+# packages/x402-stellar/src/networks.ts, which tests re-derive the SAC IDs).
+#
+# The Stellar CLI does not read this file. Register the profiles once with
+# the `stellar network add` commands in README.md#networks. Profile names
+# match STELLAR_NETWORK, so the same env value drives the app and the CLI.
+#
+# Never commit secrets here. The admin key lives in the CLI keystore
+# (`stellar keys generate`) or a secret store, never in the repo.
+
+[testnet]
+network_passphrase = "Test SDF Network ; September 2015"
+rpc_url = "https://soroban-testnet.stellar.org"   # SDF-hosted; override with STELLAR_RPC_URL
+horizon_url = "https://horizon-testnet.stellar.org"
+usdc_issuer = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"   # Circle Testnet
+usdc_sac = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+
+[public]
+network_passphrase = "Public Global Stellar Network ; September 2015"
+rpc_url = ""   # no SDF-hosted RPC: STELLAR_RPC_URL is required (provider RPC)
+horizon_url = "https://horizon.stellar.org"
+usdc_issuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"   # Circle Public
+usdc_sac = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"

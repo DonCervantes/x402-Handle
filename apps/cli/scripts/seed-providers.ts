@@ -4,36 +4,39 @@
  * Uso:
  *   bun --env-file=.env apps/cli/scripts/seed-providers.ts
  *
- * Requiere en .env: REGISTRY_CONTRACT_ID, DEMO_PROVIDER_PUBLIC/SECRET,
- * SOROBAN_RPC_URL, STELLAR_NETWORK, USDC_ASSET_ISSUER.
+ * Requiere en .env: STELLAR_NETWORK (testnet|public), REGISTRY_CONTRACT_ID,
+ * DEMO_PROVIDER_SECRET, and STELLAR_RPC_URL (required on public).
+ * See contracts/soroban-registry/README.md#networks.
+ *
+ * payment_token is always the USDC SAC of STELLAR_NETWORK; a
+ * USDC_SAC_CONTRACT_ID from the other network is rejected.
  */
 import {
   rpc,
   Contract,
   TransactionBuilder,
   BASE_FEE,
-  Networks,
   Keypair,
   Address,
   nativeToScVal,
   scValToNative,
   hash,
 } from "@stellar/stellar-sdk";
+import { assertUsdcPaymentToken, resolveStellarEnv } from "@flovia/x402-stellar/networks";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
+const stellar = resolveStellarEnv(process.env);
+const CONTRACT_ID = stellar.registryContractId;
 const OWNER_SECRET = process.env.DEMO_PROVIDER_SECRET;
-const SOROBAN_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
-const NETWORK_PASSPHRASE = Networks.TESTNET;
-// payment_token espera un contrato Address; usamos el del propio owner como
-// placeholder demo (no se usa para mover fondos, sólo metadata on-chain).
-const PAYMENT_TOKEN_PLACEHOLDER = process.env.DEMO_PROVIDER_PUBLIC!;
+const NETWORK_PASSPHRASE = stellar.profile.networkPassphrase;
+const PAYMENT_TOKEN = stellar.profile.usdc.sacContractId;
+assertUsdcPaymentToken(stellar.network, PAYMENT_TOKEN);
 
 if (!CONTRACT_ID || !OWNER_SECRET) {
   console.error("Missing REGISTRY_CONTRACT_ID or DEMO_PROVIDER_SECRET in .env");
   process.exit(1);
 }
 
-const server = new rpc.Server(SOROBAN_URL);
+const server = new rpc.Server(stellar.rpcUrl);
 const owner = Keypair.fromSecret(OWNER_SECRET);
 const contract = new Contract(CONTRACT_ID);
 
@@ -69,7 +72,7 @@ async function registerProvider(seed: ProviderSeed): Promise<bigint> {
         nativeToScVal(seed.name, { type: "string" }),
         nativeToScVal(seed.endpoint, { type: "string" }),
         nativeToScVal(usdcToStroops(seed.priceUsdc), { type: "u64" }),
-        nativeToScVal(Address.fromString(PAYMENT_TOKEN_PLACEHOLDER), { type: "address" }),
+        nativeToScVal(Address.fromString(PAYMENT_TOKEN), { type: "address" }),
         nativeToScVal(metadataHash, { type: "bytes" }),
         nativeToScVal(seed.category, { type: "symbol" })
       )
@@ -98,7 +101,9 @@ async function registerProvider(seed: ProviderSeed): Promise<bigint> {
   return providerId;
 }
 
-console.log(`Seeding ${PROVIDERS.length} providers into ${CONTRACT_ID}...\n`);
+console.log(
+  `Seeding ${PROVIDERS.length} providers into ${CONTRACT_ID} on ${stellar.profile.label} (payment_token ${PAYMENT_TOKEN})...\n`,
+);
 
 for (const seed of PROVIDERS) {
   const id = await registerProvider(seed);

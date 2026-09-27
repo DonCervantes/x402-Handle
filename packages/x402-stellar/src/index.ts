@@ -5,6 +5,13 @@ export { verifyUsdcPayment } from "./verify";
 export { createReplayCache, defaultReplayCache } from "./replay-cache";
 export { logPaymentOnChain } from "./onchain-log";
 export { decideSponsorship } from "./sponsorship";
+export {
+  assertUsdcPaymentToken,
+  isStellarNetwork,
+  resolveStellarEnv,
+  STELLAR_NETWORK_PROFILES,
+} from "./networks";
+export type { ResolvedStellarEnv, StellarNetwork, StellarNetworkProfile } from "./networks";
 export type {
   SponsorshipDecision,
   SponsorshipPolicy,

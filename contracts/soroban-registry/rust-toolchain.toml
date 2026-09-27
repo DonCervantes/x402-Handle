@@ -1,0 +1,6 @@
+# soroban-sdk 21.x targets wasm32-unknown-unknown. Rust >= 1.82 enables
+# wasm reference-types by default, which Soroban rejects, so stay on 1.81.
+[toolchain]
+channel = "1.81.0"
+targets = ["wasm32-unknown-unknown"]
+components = ["rustfmt", "clippy"]
