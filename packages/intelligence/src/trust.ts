@@ -5,7 +5,7 @@
 //   age      = min(1, days_since_registered / 90)        w1 = 0.15
 //   volume   = min(1, log10(usdc_volume_30d + 1) / 4)     w2 = 0.30
 //   kyb      = 1.0 verified, 0.3 pending, 0 none          w3 = 0.30
-//   claims   = 1 - min(1, disputes / payments)            w4 = 0.15
+//   claims   = 0 mientras no exista una fuente de disputas (#73)   w4 = 0.15
 //   recency  = 1.0 si activo en 7d, 0.5 si 30d, 0 si más  w5 = 0.10
 //
 //   Score final = round(100 · sum(pesos · factores))
@@ -56,9 +56,19 @@ export function kybFactor(status: KybStatus): number {
   return 0;
 }
 
-export function claimsFactor(disputeCount: number, paymentCount: number): number {
-  if (paymentCount <= 0) return 0; // sin historial de pagos, sin señal (ni positiva ni negativa)
-  return clamp01(1 - Math.min(1, disputeCount / paymentCount));
+/**
+ * #73 — factor claims neutralizado.
+ *
+ * Hasta que exista una fuente real de disputas, un historial "sin disputas"
+ * no es verificable y no debe presentarse como señal positiva de confianza
+ * (w4 = 15% del score). El peso se mantiene en TRUST_SCORE_WEIGHTS para no
+ * romper la forma del desglose; el factor aporta siempre 0.
+ *
+ * Fórmula original (restaurar cuando exista una fuente de disputas):
+ *   claims = 1 - min(1, disputes / payments)
+ */
+export function claimsFactor(_disputeCount: number, _paymentCount: number): number {
+  return 0;
 }
 
 export function recencyFactor(lastPaymentAt: Date | null, now: Date): number {
