@@ -1,6 +1,13 @@
 // code/x402-stellar-middleware/src/index.ts
 export { x402Stellar } from "./server";
 export { x402Pay } from "./client";
+export {
+  X402ConfirmationTimeoutError,
+  X402TransactionFailedError,
+  X402TransactionNotFoundError,
+  createHorizonProbe,
+  waitForConfirmation,
+} from "./client";
 export { verifyUsdcPayment } from "./verify";
 export { createReplayCache, defaultReplayCache } from "./replay-cache";
 export { logPaymentOnChain } from "./onchain-log";
@@ -24,3 +31,9 @@ export type {
 } from "./types";
 export type { ReplayCache } from "./replay-cache";
 export type { X402PayOpts, X402PayResult } from "./client";
+export type {
+  ConfirmationWaitOptions,
+  HorizonProbe,
+  HorizonProbeResult,
+  X402ConfirmationErrorCode,
+} from "./client";
