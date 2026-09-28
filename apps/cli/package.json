@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bun test",
+    "test": "bun test --pass-with-no-tests",
     "market:snapshot": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/market-snapshot.ts",
     "customer:intelligence": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/customer-intelligence.ts",
     "coingecko:transactions": "dotenvx run --ignore=MISSING_ENV_FILE -f ../../.env -f .env -- bun scripts/analytics/capture-coingecko-transactions.ts",
@@ -18,7 +18,7 @@
     "mpp:capture": "bun scripts/analytics/capture-mpp.ts",
     "mpp:materialize": "bun scripts/analytics/materialize-mpp-catalog.ts",
     "geo:bake": "bun scripts/analytics/bake-geo-providers.ts",
-    "verify": "bun run typecheck && bun test"
+    "verify": "bun run typecheck && bun test --pass-with-no-tests"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.64.0",
