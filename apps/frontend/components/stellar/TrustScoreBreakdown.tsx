@@ -5,7 +5,7 @@ const FACTOR_LABELS: Record<keyof TrustScore["components"], string> = {
   age: "Antigüedad",
   volume: "Volumen 30d",
   kyb: "KYB",
-  claims: "Sin disputas",
+  claims: "Disputas (próximamente)", // #73: sin fuente de disputas, el factor no puntúa
   recency: "Actividad reciente",
 };
 
