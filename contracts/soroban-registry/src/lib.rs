@@ -9,6 +9,12 @@
 //!   - DataKey::Payment(u64)        → PaymentLog
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
 //!
+//! TTL: every persistent write extends its entry (Provider, Payment,
+//! TxConsumed) to TTL_EXTEND_TO = 518_400 ledgers (30 days) when fewer than
+//! TTL_THRESHOLD = 120_960 ledgers (7 days) remain; `initialize` and every
+//! mutating call do the same for the contract instance. See
+//! docs/soroban-registry-ttl-runbook.md for the missed-TTL runbook.
+//!
 //! Events:
 //!   ("registry", "provider_registered", id)        data = Provider
 //!   ("registry", "provider_updated", id)           data = Provider
@@ -32,6 +38,46 @@ pub enum Error {
     NotFound             = 4,
     PaymentAlreadyLogged = 5,
     InvalidArgument      = 6,
+}
+
+// ───────────────────────────── TTL window (issue #88)
+//
+// Stellar ledgers close approximately every 5 s, so 17_280 ledgers ≈ 1 day.
+// The documented TTL window for this contract is:
+//
+//   TTL_THRESHOLD = 7 days  = 120_960 ledgers = 604_800 seconds
+//   TTL_EXTEND_TO = 30 days = 518_400 ledgers = 2_592_000 seconds
+//
+// Every persistent write re-extends its entry to `TTL_EXTEND_TO`, but only
+// when fewer than `TTL_THRESHOLD` ledgers remain (otherwise the call is a
+// no-op, so frequent writes do not pay rent twice). The same window is used
+// for the contract instance (Admin, ProviderCounter, PaymentCounter and the
+// WASM code entry share it).
+//
+// Both values must stay below the network parameter `max_entry_ttl`, which
+// caps any single extension (6_312_000 ledgers ≈ 365 days on Public and in
+// the test environment), and the contract must be written so entries are
+// touched more often than `TTL_EXTEND_TO`. See
+// `docs/soroban-registry-ttl-runbook.md` for what happens if a TTL is missed.
+const TTL_THRESHOLD: u32 = 7 * 17_280; // 120_960 ledgers ≈ 7 days
+const TTL_EXTEND_TO: u32 = 30 * 17_280; // 518_400 ledgers ≈ 30 days
+
+/// Extends a persistent entry (Provider, Payment, TxConsumed) to the
+/// documented TTL window: topped up to `TTL_EXTEND_TO` ledgers once fewer
+/// than `TTL_THRESHOLD` ledgers remain, no-op otherwise.
+fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Extends the contract instance (and WASM code) entry to the documented
+/// TTL window. Instance keys `Admin`, `ProviderCounter` and `PaymentCounter`
+/// are stored inside the instance entry, so this covers all of them.
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
 // ───────────────────────────── Types
@@ -90,6 +136,9 @@ impl FloviaRegistry {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
+        // Instance TTL window starts here and is renewed on every mutating
+        // call (issue #88).
+        extend_instance_ttl(&env);
     }
 
     pub fn admin(env: Env) -> Address {
@@ -142,7 +191,9 @@ impl FloviaRegistry {
         };
 
         env.storage().persistent().set(&DataKey::Provider(counter), &provider);
+        extend_persistent_ttl(&env, &DataKey::Provider(counter));
         env.storage().instance().set(&DataKey::ProviderCounter, &counter);
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_reg"), counter),
@@ -174,6 +225,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        extend_persistent_ttl(&env, &DataKey::Provider(provider_id));
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_upd"), provider_id),
@@ -195,6 +248,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        extend_persistent_ttl(&env, &DataKey::Provider(provider_id));
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_off"), provider_id),
@@ -216,6 +271,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        extend_persistent_ttl(&env, &DataKey::Provider(provider_id));
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_on"), provider_id),
@@ -302,8 +359,11 @@ impl FloviaRegistry {
         };
 
         env.storage().persistent().set(&DataKey::Payment(counter), &log);
+        extend_persistent_ttl(&env, &DataKey::Payment(counter));
         env.storage().persistent().set(&consumed_key, &true);
+        extend_persistent_ttl(&env, &consumed_key);
         env.storage().instance().set(&DataKey::PaymentCounter, &counter);
+        extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
@@ -364,6 +424,7 @@ impl FloviaRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
+    use soroban_sdk::testutils::storage::{Instance as _, Persistent as _};
     use soroban_sdk::{testutils::Address as _, testutils::Ledger, BytesN, Env, String, Symbol};
 
     fn setup() -> (Env, FloviaRegistryClient<'static>, Address) {
@@ -514,5 +575,138 @@ mod test {
         );
         let p = client.get_provider(&id);
         assert_eq!(p.created_at, 1_700_000_000);
+    }
+
+    // ─── TTL window (issue #88) ────────────────────────────────────
+    //
+    // Chosen window, recorded here and in the constants at the top of
+    // lib.rs (ledger ≈ 5 s → 17_280 ledgers ≈ 1 day):
+    //
+    //   TTL_THRESHOLD = 120_960 ledgers = 7 days  = 604_800 seconds
+    //   TTL_EXTEND_TO = 518_400 ledgers = 30 days = 2_592_000 seconds
+    //
+    // Network settings are set explicitly so assertions are exact:
+    // new persistent/instance entries start with `min_persistent_entry_ttl`
+    // (minus one: the creation ledger counts) and any single extension is
+    // capped by `max_entry_ttl` (Public/test default 6_312_000 ledgers).
+
+    /// Creates an env with deterministic TTL-related network settings.
+    fn ttl_env() -> Env {
+        let env = Env::default();
+        env.ledger().with_mut(|li| {
+            li.sequence_number = 100_000;
+            li.min_persistent_entry_ttl = 500;
+            li.max_entry_ttl = 6_312_000;
+        });
+        env.mock_all_auths();
+        env
+    }
+
+    /// `initialize` and every persistent write extend to TTL_EXTEND_TO
+    /// (518_400 ledgers ≈ 30 days): instance (Admin + counters), Provider,
+    /// Payment and TxConsumed.
+    #[test]
+    fn extends_ttl_on_initialize_and_writes() {
+        let env = ttl_env();
+        let admin = Address::generate(&env);
+        let contract_id = env.register_contract(None, FloviaRegistry);
+        let client = FloviaRegistryClient::new(&env, &contract_id);
+
+        // initialize → instance TTL window starts at TTL_EXTEND_TO.
+        client.initialize(&admin);
+        env.as_contract(&contract_id, || {
+            assert_eq!(env.storage().instance().get_ttl(), TTL_EXTEND_TO);
+        });
+
+        // register_provider → Provider(id) extended.
+        let owner = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "X"),
+            &String::from_str(&env, "https://x.io"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+        env.as_contract(&contract_id, || {
+            assert_eq!(
+                env.storage().persistent().get_ttl(&DataKey::Provider(id)),
+                TTL_EXTEND_TO
+            );
+            assert_eq!(env.storage().instance().get_ttl(), TTL_EXTEND_TO);
+        });
+
+        // log_payment → Payment(1) and the TxConsumed replay marker extended.
+        let payer = Address::generate(&env);
+        let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
+        client.log_payment(&id, &payer, &50_000u64, &tx_hash);
+        env.as_contract(&contract_id, || {
+            assert_eq!(
+                env.storage().persistent().get_ttl(&DataKey::Payment(1)),
+                TTL_EXTEND_TO
+            );
+            assert_eq!(
+                env.storage()
+                    .persistent()
+                    .get_ttl(&DataKey::TxConsumed(tx_hash.clone())),
+                TTL_EXTEND_TO
+            );
+            assert_eq!(env.storage().instance().get_ttl(), TTL_EXTEND_TO);
+        });
+    }
+
+    /// Re-extension only happens below TTL_THRESHOLD (120_960 ledgers
+    /// ≈ 7 days); above it the call is a documented no-op.
+    #[test]
+    fn extends_ttl_again_only_below_threshold() {
+        let env = ttl_env();
+        let admin = Address::generate(&env);
+        let contract_id = env.register_contract(None, FloviaRegistry);
+        let client = FloviaRegistryClient::new(&env, &contract_id);
+        client.initialize(&admin);
+        let owner = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "X"),
+            &String::from_str(&env, "https://x.io"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+
+        // Advance 100_000 ledgers: 418_400 remain — still above
+        // TTL_THRESHOLD, so update_provider must not top up.
+        env.ledger().with_mut(|li| li.sequence_number += 100_000);
+        client.update_provider(
+            &id,
+            &20u64,
+            &String::from_str(&env, "https://x.io/v2"),
+            &BytesN::from_array(&env, &[9u8; 32]),
+        );
+        env.as_contract(&contract_id, || {
+            assert_eq!(
+                env.storage().persistent().get_ttl(&DataKey::Provider(id)),
+                TTL_EXTEND_TO - 100_000
+            );
+            assert_eq!(env.storage().instance().get_ttl(), TTL_EXTEND_TO - 100_000);
+        });
+
+        // Advance another 350_000 ledgers: 68_400 remain — below
+        // TTL_THRESHOLD, so activate tops both back up to TTL_EXTEND_TO.
+        env.ledger().with_mut(|li| li.sequence_number += 350_000);
+        client.activate(&id);
+        env.as_contract(&contract_id, || {
+            assert_eq!(
+                env.storage().persistent().get_ttl(&DataKey::Provider(id)),
+                TTL_EXTEND_TO
+            );
+            assert_eq!(env.storage().instance().get_ttl(), TTL_EXTEND_TO);
+        });
     }
 }
