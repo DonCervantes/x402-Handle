@@ -10,10 +10,11 @@
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
 //!
 //! Events:
-//!   ("registry", "provider_registered", id)        data = Provider
-//!   ("registry", "provider_updated", id)           data = Provider
-//!   ("registry", "provider_deactivated", id)       data = ()
-//!   ("registry", "payment_logged", provider_id)    data = PaymentLog
+//!   ("registry", "prov_reg", id)        data = Provider
+//!   ("registry", "prov_upd", id)        data = Provider
+//!   ("registry", "prov_off", id)        data = ()
+//!   ("registry", "prov_on", id)         data = ()
+//!   ("registry", "pay_log", provider_id) data = PaymentLog
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, panic_with_error,
