@@ -171,3 +171,13 @@ Or run BFF and frontend together:
 ```sh
 docker compose up --build
 ```
+
+---
+
+## 📜 Governance & Security
+
+- **License**: Released under the [MIT License](LICENSE).
+- **Security**: For vulnerability disclosures, refer to our [Security Policy](SECURITY.md).
+- **Contributing**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- **Branch Protection & Governance**: See [docs/branch-protection.md](docs/branch-protection.md) and [docs/repository-governance.md](docs/repository-governance.md).
+

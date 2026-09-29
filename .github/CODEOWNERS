@@ -1,0 +1,11 @@
+# Global repository maintainers
+*       @KingMavin
+
+# Workflows and CI/CD
+/.github/workflows/   @KingMavin
+
+# Smart contracts
+/contracts/           @KingMavin
+
+# Documentation
+/docs/                @KingMavin
