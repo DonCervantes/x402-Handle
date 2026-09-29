@@ -128,6 +128,14 @@ Flovia currently treats Solana as a signal direction for onchain payment intelli
 
 The CLI generates market snapshots and customer intelligence by combining CDP x402 Discovery and Bitquery. The BFF serves saved read models as a read-only API, and the frontend renders those projections as a Next.js UI.
 
+## HANDLE provider registration
+
+Third-party providers integrating with the Stellar/USDC HANDLE registry should read
+the [provider registration guide](docs/provider-registration.md) for required fields,
+owner authorization, integration review, and demo-versus-live evidence. This registry
+is Stellar-only; the broader Flovia market-intelligence catalogs are a separate
+discovery surface. Public onboarding remains subject to the linked mainnet release gate.
+
 ---
 
 ## ⚡ Quick start
