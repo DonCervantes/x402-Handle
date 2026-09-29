@@ -66,9 +66,19 @@ tests; full browser walkthroughs or E2E demos are not yet in place.
 ### Implemented
 
 - `apps/bff`
-  - Provides read-only product endpoints for `GET`.
-  - Returns `405` for non-`GET` requests, matching the read-only policy.
-  - Returns JSON `404` for unpublished routes.
+  - Is **not** GET-only. It exposes two categories of routes, listed separately
+    under [Published endpoints](#published-endpoints) below:
+    - **Read-only product `GET` routes**: no state change on the BFF.
+    - **Privileged `POST` routes**: state-changing (they sign and submit real
+      payments or replace server-side data), each with its own gate. Three of
+      the four have **no authentication**.
+  - A non-`GET` request to a read-only route (the fixed paths in
+    `readonlyRoutes` in `apps/bff/src/http/routes.ts`, the `/customers/:address/...` routes matched by `matchCustomerRoute`,
+    `/providers/:providerId`, and the `/showcase/*` routes) that is not one of
+    the privileged `POST` routes returns `405` with `Allow: GET`.
+  - Returns JSON `404` for unpublished routes. A non-`GET` request to
+    `/stellar/providers/:id` or `/stellar/providers/:id/intelligence` also
+    returns `404`, not `405`.
   - `GET /customers/:address/intelligence` returns the prepared read model and does
     not call live sources on the request path.
 - Phase B canonical contract
@@ -94,7 +104,7 @@ tests; full browser walkthroughs or E2E demos are not yet in place.
     contracts, and deferred endpoints.
   - `docs/phase-b/demo-data.md` defines demo data and provenance labeling rules.
   - `apps/bff/README.md` documents BFF endpoints, unpublished endpoints, and
-    the read-only policy.
+    the HTTP method policy (read-only `GET` vs privileged `POST`).
 - `apps/frontend`
   - `lib/api/client.ts` fetches `/customers`, `/customers/:address/profile`, and
     `/wallet-usage-graph`.
@@ -107,6 +117,8 @@ tests; full browser walkthroughs or E2E demos are not yet in place.
 
 ### Published endpoints
 
+#### Read-only product `GET` routes
+
 ```text
 GET /
 GET /health
@@ -118,6 +130,22 @@ GET /wallet-usage-graph
 
 Product endpoints follow the Phase B schema in
 `docs/phase-b/api-contract.md` and `packages/contracts`.
+
+#### Privileged `POST` routes
+
+These routes change state. They are dispatched in `apps/bff/src/http.ts`, and
+their gates are implemented in the handlers listed below. **"No auth" means
+anyone who can reach the BFF can trigger the action.**
+
+| Method + path | What it does | Auth / gate (as implemented) |
+| --- | --- | --- |
+| `POST /stellar/playground/pay` | Body `{ "providerId": string }`. Runs a real x402 payment server-side (`runPlaygroundPayment`, `apps/bff/src/data/stellar-playground.ts`), signed with the BFF's `DEMO_AGENT_SECRET` (`maxAmountUsdc: 0.01`, network from `STELLAR_NETWORK`, default `testnet`). Only the live demo provider (`providerId` 1) is paid; other providers return `422`. | **No auth.** No API key, session, token, or signature is checked. `400` if `providerId` is missing; `422` if the payment is not made (`not_found`, `no_live_endpoint`, `misconfigured` when `DEMO_AGENT_SECRET` is unset, `payment_failed`). |
+| `POST /aeo/x402/refresh` | Triggers a live x402 discovery refresh (`x402Store.refresh()`) and replaces the served discovery data. | **Shared-secret bearer token.** `Authorization: Bearer <token>` or `X-Refresh-Token: <token>`, compared in constant time against `BFF_X402_REFRESH_TOKEN`. `403` (route disabled) if `BFF_X402_REFRESH_TOKEN` is unset; `401` if the token is missing or wrong. |
+| `POST /showcase/stripe-mpp/pay` | Pays the local `/showcase/stripe-mpp/paid` route over Stripe MPP (Tempo testnet) with the server-side `MPPX_PRIVATE_KEY` wallet (`handleStripeMppPayShowcase`, `apps/bff/src/showcase/stripe-mpp-paid.ts`). | **No auth.** Requires the header `x-flovia-showcase-pay: stripe-mpp` (`400` otherwise). This is a fixed, public value, not a secret. `503` if `MPPX_PRIVATE_KEY` is unset or malformed. |
+| `POST /showcase/solana-mpp/pay` | Pays the local `/showcase/solana-mpp/paid` route over Solana MPP (SPL token, network from `SOLANA_MPP_NETWORK`, default `devnet`) with the server-side `SOLANA_MPP_PAYER_PRIVATE_KEY` wallet (`handleSolanaMppPayShowcase`, `apps/bff/src/showcase/solana-mpp-paid.ts`). | **No auth.** Requires the header `x-flovia-showcase-pay: solana-mpp` (`400` otherwise). This is a fixed, public value, not a secret. `503` if `SOLANA_MPP_PAYER_PRIVATE_KEY` is unset or invalid. |
+
+No other method, such as `PUT`, `PATCH`, or `DELETE`, performs an action on any
+route.
 
 ### Endpoints deferred from initial implementation
 
