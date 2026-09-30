@@ -5,7 +5,7 @@
 //   age      = min(1, days_since_registered / 90)        w1 = 0.15
 //   volume   = min(1, log10(usdc_volume_30d + 1) / 4)     w2 = 0.30
 //   kyb      = 1.0 verified, 0.3 pending, 0 none          w3 = 0.30
-//   claims   = 1 - min(1, disputes / payments)            w4 = 0.15
+//   claims   = 0 (neutralizado hasta sistema de disputas)  w4 = 0.15
 //   recency  = 1.0 si activo en 7d, 0.5 si 30d, 0 si más  w5 = 0.10
 //
 //   Score final = round(100 · sum(pesos · factores))
@@ -56,9 +56,13 @@ export function kybFactor(status: KybStatus): number {
   return 0;
 }
 
-export function claimsFactor(disputeCount: number, paymentCount: number): number {
-  if (paymentCount <= 0) return 0; // sin historial de pagos, sin señal (ni positiva ni negativa)
-  return clamp01(1 - Math.min(1, disputeCount / paymentCount));
+/**
+ * Factor de claims/disputas.
+ * Neutralizado a 0 hasta que exista un sistema real de disputas en main.
+ * No se debe interpretar la ausencia de disputas como una señal positiva (15% no merecido).
+ */
+export function claimsFactor(_disputeCount: number, _paymentCount: number): number {
+  return 0;
 }
 
 export function recencyFactor(lastPaymentAt: Date | null, now: Date): number {
