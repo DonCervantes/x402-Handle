@@ -28,3 +28,23 @@ jobs:
 
       - name: Check formatting
         run: bun run format:check
+
+  soroban-registry:
+    name: Soroban registry tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts/soroban-registry
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo test
+        run: cargo test
+
