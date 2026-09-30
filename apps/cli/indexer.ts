@@ -103,6 +103,22 @@ async function upsertPayment(log: RawPaymentLog, ledger: number): Promise<void> 
   `;
 }
 
+async function deactivateProvider(providerId: bigint, ledgerClosedAt: string): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = false, last_seen_at = ${ledgerClosedAt}
+    WHERE id = ${providerRowId(providerId)}
+  `;
+}
+
+async function activateProvider(providerId: bigint, ledgerClosedAt: string): Promise<void> {
+  await Bun.sql`
+    UPDATE providers
+    SET active = true, last_seen_at = ${ledgerClosedAt}
+    WHERE id = ${providerRowId(providerId)}
+  `;
+}
+
 async function runOnce(): Promise<{ ledger: number; providers: number; payments: number }> {
   const fromLedger = await getLastLedger();
   const events = await stellar.getContractEvents({
@@ -119,6 +135,12 @@ async function runOnce(): Promise<{ ledger: number; providers: number; payments:
     const kind = ev.topics?.[1];
     if (kind === "prov_reg" || kind === "prov_upd") {
       await upsertProvider(ev.value as RawProvider, ev.timestamp);
+      providerCount++;
+    } else if (kind === "prov_off") {
+      await deactivateProvider(ev.value as bigint, ev.timestamp);
+      providerCount++;
+    } else if (kind === "prov_on") {
+      await activateProvider(ev.value as bigint, ev.timestamp);
       providerCount++;
     } else if (kind === "pay_log") {
       await upsertPayment(ev.value as RawPaymentLog, ev.ledger);
