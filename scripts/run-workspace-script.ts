@@ -11,10 +11,13 @@ const workspaces = [
   "packages/contracts",
   "packages/sources",
   "packages/intelligence",
+  "packages/x402-stellar",
+  "packages/agent-sdk",
   "apps/cli",
   "apps/data",
   "apps/bff",
   "apps/frontend",
+  "apps/demo-provider",
 ] as const;
 
 for (const workspace of workspaces) {
@@ -29,5 +32,20 @@ for (const workspace of workspaces) {
   const exitCode = await child.exited;
   if (exitCode !== 0) {
     process.exit(exitCode);
+  }
+}
+
+if (scriptName === "test" || scriptName === "verify") {
+  console.log("\n> contracts/soroban-registry: cargo test");
+
+  const cargoChild = Bun.spawn(["cargo", "test"], {
+    cwd: "contracts/soroban-registry",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+
+  const cargoExitCode = await cargoChild.exited;
+  if (cargoExitCode !== 0) {
+    process.exit(cargoExitCode);
   }
 }
