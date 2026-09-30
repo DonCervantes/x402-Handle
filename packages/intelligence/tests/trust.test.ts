@@ -32,12 +32,13 @@ describe("kybFactor", () => {
 });
 
 describe("claimsFactor", () => {
-  test("sin pagos → 0 (sin historial, sin señal)", () => expect(claimsFactor(0, 0)).toBe(0));
-  test("sin disputas → 1", () => expect(claimsFactor(0, 100)).toBe(1));
-  test("mitad de pagos disputados → 0.5", () => expect(claimsFactor(5, 10)).toBe(0.5));
-  test("todos los pagos disputados → 0", () => expect(claimsFactor(10, 10)).toBe(0));
-  test("más disputas que pagos (dato inconsistente) → clamp a 0", () =>
-    expect(claimsFactor(15, 10)).toBe(0));
+  test("neutralizado a 0 hasta que exista sistema de disputas", () => {
+    expect(claimsFactor(0, 0)).toBe(0);
+    expect(claimsFactor(0, 100)).toBe(0);
+    expect(claimsFactor(5, 10)).toBe(0);
+    expect(claimsFactor(10, 10)).toBe(0);
+    expect(claimsFactor(15, 10)).toBe(0);
+  });
 });
 
 describe("recencyFactor", () => {
@@ -65,7 +66,7 @@ describe("computeTrustScore", () => {
     expect(result.score).toBe(0);
   });
 
-  test("provider ideal: viejo, alto volumen, KYB verified, sin disputas, activo hoy → score alto", () => {
+  test("provider ideal: viejo, alto volumen, KYB verified, sin disputas, activo hoy → score alto con claims neutralizado", () => {
     const result = computeTrustScore({
       registeredAt: daysAgo(365),
       volume30dUsdc: 100_000,
@@ -75,8 +76,9 @@ describe("computeTrustScore", () => {
       lastPaymentAt: daysAgo(0),
       now: NOW,
     });
-    expect(result.score).toBeGreaterThanOrEqual(95);
-    expect(result.score).toBeLessThanOrEqual(100);
+    // Con claims neutralizado (peso 0.15 = 0), el tope máximo es 85
+    expect(result.score).toBe(85);
+    expect(result.components.claims).toBe(0);
   });
 
   test("componentes y pesos quedan persistidos en el resultado para auditabilidad", () => {
@@ -92,11 +94,24 @@ describe("computeTrustScore", () => {
     expect(result.components.age).toBeCloseTo(0.5, 5);
     expect(result.components.volume).toBeCloseTo(0.5, 5);
     expect(result.components.kyb).toBe(0.3);
-    expect(result.components.claims).toBe(0.9);
+    expect(result.components.claims).toBe(0);
     expect(result.components.recency).toBe(0.5);
     expect(result.weights.volume).toBe(0.3);
-    // 100 * (0.15*0.5 + 0.30*0.5 + 0.30*0.3 + 0.15*0.9 + 0.10*0.5) = 50 → round = 50
-    expect(result.score).toBe(50);
+    // 100 * (0.15*0.5 + 0.30*0.5 + 0.30*0.3 + 0.15*0 + 0.10*0.5) = 36.499999999999994 → round = 36
+    expect(result.score).toBe(36);
+  });
+
+  test("score breakdown neutraliza claims y no presenta historial neutral como señal positiva", () => {
+    const withHistory = computeTrustScore({
+      registeredAt: daysAgo(90),
+      volume30dUsdc: 1000,
+      kybStatus: "verified",
+      disputeCount: 0,
+      paymentCount: 50,
+      lastPaymentAt: daysAgo(5),
+      now: NOW,
+    });
+    expect(withHistory.components.claims).toBe(0);
   });
 
   test("score siempre es un entero entre 0 y 100", () => {
