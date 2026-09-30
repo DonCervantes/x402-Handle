@@ -8,6 +8,8 @@
 //!   - DataKey::PaymentCounter      → u64
 //!   - DataKey::Payment(u64)        → PaymentLog
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
+//!   - DataKey::Paused              → bool (absent means unpaused)
+//!   - DataKey::Logger(Address)     → bool (allowlisted logger, absent means denied)
 //!
 //! Events:
 //!   ("registry", "provider_registered", id)        data = Provider
@@ -32,6 +34,8 @@ pub enum Error {
     NotFound             = 4,
     PaymentAlreadyLogged = 5,
     InvalidArgument      = 6,
+    Paused               = 7,
+    NotAllowlisted       = 8,
 }
 
 // ───────────────────────────── Types
@@ -72,6 +76,8 @@ enum DataKey {
     PaymentCounter,
     Payment(u64),
     TxConsumed(BytesN<32>),
+    Paused,
+    Logger(Address),
 }
 
 // ───────────────────────────── Contract
@@ -99,6 +105,69 @@ impl FloviaRegistry {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
+    /// Freeze provider and payment mutations. Reads and admin recovery remain available.
+    pub fn pause(env: Env) {
+        require_admin(&env);
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("paused")),
+            (),
+        );
+    }
+
+    pub fn unpause(env: Env) {
+        require_admin(&env);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("unpaused")),
+            (),
+        );
+    }
+
+    pub fn paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Immediately rotate authority, requiring authorization from the current admin.
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        require_admin(&env);
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("admin_chg")),
+            new_admin,
+        );
+    }
+
+    /// Allow a logger to record payments. Membership alone does not authorize a call.
+    pub fn add_logger(env: Env, logger: Address) {
+        require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::Logger(logger.clone()), &true);
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("log_add")),
+            logger,
+        );
+    }
+
+    pub fn remove_logger(env: Env, logger: Address) {
+        require_admin(&env);
+        env.storage()
+            .instance()
+            .remove(&DataKey::Logger(logger.clone()));
+        env.events().publish(
+            (symbol_short!("registry"), symbol_short!("log_del")),
+            logger,
+        );
+    }
+
+    pub fn is_logger(env: Env, logger: Address) -> bool {
+        env.storage().instance().has(&DataKey::Logger(logger))
+    }
+
     // ─── Provider management ───────────────────────────────────
 
     /// Registra un nuevo proveedor. Requiere firma del `owner`.
@@ -113,6 +182,7 @@ impl FloviaRegistry {
         metadata_hash: BytesN<32>,
         category: Symbol,
     ) -> u64 {
+        require_unpaused(&env);
         owner.require_auth();
 
         if name.len() == 0 || endpoint.len() == 0 {
@@ -160,6 +230,7 @@ impl FloviaRegistry {
         endpoint: String,
         metadata_hash: BytesN<32>,
     ) {
+        require_unpaused(&env);
         let mut p: Provider = env
             .storage()
             .persistent()
@@ -183,6 +254,7 @@ impl FloviaRegistry {
 
     /// Marca como inactivo. Requiere firma del owner.
     pub fn deactivate(env: Env, provider_id: u64) {
+        require_unpaused(&env);
         let mut p: Provider = env
             .storage()
             .persistent()
@@ -204,6 +276,7 @@ impl FloviaRegistry {
 
     /// Reactiva un provider previamente desactivado. Requiere firma del owner.
     pub fn activate(env: Env, provider_id: u64) {
+        require_unpaused(&env);
         let mut p: Provider = env
             .storage()
             .persistent()
@@ -262,16 +335,22 @@ impl FloviaRegistry {
 
     // ─── Payment log ────────────────────────────────────────────
 
-    /// Loguea un pago. Cualquiera puede llamar; la protección es
-    /// la unicidad de `tx_hash` (replay-proof).
-    /// En v2: restringir a llamadores autorizados (oracle, provider's middleware).
+    /// Record a payment from an authenticated, allowlisted logger.
+    /// The payer is recorded as metadata; it does not authorize the logger.
+    /// Transaction hashes remain unique across all loggers.
     pub fn log_payment(
         env: Env,
+        caller: Address,
         provider_id: u64,
         payer: Address,
         amount: u64,
         tx_hash: BytesN<32>,
     ) -> u64 {
+        require_unpaused(&env);
+        if !Self::is_logger(env.clone(), caller.clone()) {
+            panic_with_error!(&env, Error::NotAllowlisted);
+        }
+        caller.require_auth();
         // El provider debe existir
         let provider: Provider = env
             .storage()
@@ -359,7 +438,20 @@ impl FloviaRegistry {
     }
 }
 
+fn require_admin(env: &Env) {
+    FloviaRegistry::admin(env.clone()).require_auth();
+}
+
+fn require_unpaused(env: &Env) {
+    if FloviaRegistry::paused(env.clone()) {
+        panic_with_error!(env, Error::Paused);
+    }
+}
+
 // ───────────────────────────── Tests
+
+#[cfg(test)]
+mod admin_test;
 
 #[cfg(test)]
 mod test {
@@ -467,11 +559,12 @@ mod test {
         );
 
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
-        let pid1 = client.log_payment(&id, &payer, &50_000u64, &tx_hash);
+        client.add_logger(&owner);
+        let pid1 = client.log_payment(&owner, &id, &payer, &50_000u64, &tx_hash);
         assert_eq!(pid1, 1);
 
         // Duplicado debe fallar
-        let result = client.try_log_payment(&id, &payer, &50_000u64, &tx_hash);
+        let result = client.try_log_payment(&owner, &id, &payer, &50_000u64, &tx_hash);
         assert!(result.is_err());
     }
 
