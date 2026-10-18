@@ -34,7 +34,8 @@ app.use(
     amountUsdc: "0.005",
     network: "testnet",
     onPaymentVerified: async ({ txHash, payer }) => {
-      // opcional: log_payment al contrato Soroban
+      // Opcional: enviar el pago verificado al registry Soroban.
+      // El firmante debe ser el owner del provider o un oracle autorizado.
     },
   })
 );
@@ -79,6 +80,7 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 - **Memo único** por challenge: garantiza idempotencia.
 - **Replay protection** local con TTL de 24h por defecto.
 - **Verificación contra Horizon**, nunca contra el cliente.
+- El registry requiere que `log_payment` lo autorice el owner del provider o un oracle habilitado por el admin. El monto registrado procede del precio del provider, no de un argumento enviado por el llamador.
 
 ## Tests
 

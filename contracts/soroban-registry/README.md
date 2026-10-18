@@ -11,7 +11,8 @@ A Public deployment is blocked until the [Stellar mainnet go-live checklist](../
 - **`register_provider(...)`** — un proveedor registra su servicio en el catálogo público.
 - **`update_provider(id, ...)`** — el owner actualiza campos mutables (precio, endpoint, metadata).
 - **`deactivate(id)`** — el owner pausa el listing.
-- **`log_payment(provider_id, payer, amount, tx_hash)`** — registra que se cobró por uso (cualquiera puede llamarlo; protección contra duplicados por `tx_hash`).
+- **`set_oracle(oracle, allowed)`** — el admin gestiona la allowlist de oracles.
+- **`log_payment(provider_id, payer, tx_hash, authorizer)`** — el owner del provider o un oracle autorizado registra un pago; el monto se toma del precio registrado y `tx_hash` sólo puede usarse una vez.
 - **Lecturas:** `get_provider(id)`, `list_providers()`, `get_payment_log(provider_id, limit)`.
 
 ## Eventos
@@ -61,7 +62,8 @@ stellar contract invoke \
 
 ## Notas de seguridad / scope
 
-- En v1, `log_payment` es abierto (cualquiera puede llamar). La protección es por `tx_hash` único.
-- En v2 planeamos que sólo el destino del pago (o un oracle whitelisteado) pueda llamar.
+- `initialize` requiere la firma de la cuenta admin prevista. Esa cuenta autoriza cambios en la allowlist mediante `set_oracle`.
+- `log_payment` requiere la firma del owner del provider o de una cuenta habilitada por el admin. El firmante es responsable de verificar y atestiguar el pagador y el `tx_hash`; el contrato no consulta Horizon.
+- El monto no se acepta como argumento de `log_payment`: se registra el `price_stroops` configurado en el provider. Para registrar un pago variable, el flujo de autorización deberá proporcionar una verificación on-chain del monto antes de ampliar el contrato.
 - El contrato no custodia fondos: sólo registra metadata.
 - `metadata_hash` es un `BytesN<32>` para apuntar a metadata extendida off-chain (IPFS, gateway HTTP), manteniéndolo barato en storage.
