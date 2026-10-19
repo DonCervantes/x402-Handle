@@ -28,13 +28,9 @@ const providerConfig = {
     dashboardEyebrow: "What you see in Stripe Dashboard",
     paymentLabel: "PaymentIntent",
     callActionTitle: "Call the real Stripe MPP challenge endpoint",
-    payButtonLabel: "Pay with MPPX wallet",
-    nextActionAtChallenge: "Pay with MPPX wallet",
     challengeTitle: "Payment required",
     endpoint: "/showcase/stripe-mpp/paid",
     publicEndpoint: "/api/showcase/stripe-mpp/paid",
-    publicPayEndpoint: "/api/showcase/stripe-mpp/pay",
-    payConfirmationValue: "stripe-mpp",
     amount: "$1.00 USD",
     rail: "Tempo token payment",
     accent: "var(--mesh-blue)",
@@ -69,9 +65,8 @@ const providerConfig = {
     captured: ["provider=stripe", "rail=mpp", "network=tempo", "paymentIntentId", "recipient", "endpoint status latency"],
     copy: {
       idle:
-        "Call the endpoint to inspect the MPP 402 challenge, or pay from the server-side MPPX demo wallet with one button.",
-      challenge:
-        "402 challenge issued. Click Pay with MPPX wallet to pay and retry with a Payment credential from the BFF demo wallet.",
+        "Call the endpoint to inspect the MPP 402 challenge. Server-side payments are disabled for this showcase.",
+      challenge: "402 challenge issued. Server-side payments are disabled for this showcase.",
       paid: "MPP credential accepted. Paid API response delivered and joined by HANDLE.",
     },
   },
@@ -87,8 +82,6 @@ const providerConfig = {
     challengeTitle: "Checkout URL issued",
     endpoint: "/showcase/hitpay-mpp/paid",
     publicEndpoint: "/api/showcase/hitpay-mpp/paid",
-    publicPayEndpoint: null,
-    payConfirmationValue: null,
     amount: "S$1.00 SGD",
     rail: "Checkout URL / QR",
     accent: "var(--teal)",
@@ -133,13 +126,9 @@ const providerConfig = {
     dashboardEyebrow: "What you see in Solana Explorer",
     paymentLabel: "SPL transfer",
     callActionTitle: "Call the real Solana MPP challenge endpoint",
-    payButtonLabel: "Pay with Solana wallet",
-    nextActionAtChallenge: "Sign with Solana wallet",
     challengeTitle: "Solana payment required",
     endpoint: "/showcase/solana-mpp/paid",
     publicEndpoint: "/api/showcase/solana-mpp/paid",
-    publicPayEndpoint: "/api/showcase/solana-mpp/pay",
-    payConfirmationValue: "solana-mpp",
     amount: "0.10 USDC (devnet)",
     rail: "Solana SPL transfer",
     accent: "var(--solana)",
@@ -207,9 +196,8 @@ app.get(
     // the message matches where the SPL transfer actually settled.
     copy: {
       idle:
-        "Call the endpoint to inspect the Solana MPP 402 challenge, or pay from the server-side payer wallet (devnet USDC). {network} is the configured cluster.",
-      challenge:
-        "402 challenge issued. Click Pay with Solana wallet to sign and submit an SPL transfer on {network}, then retry with the MPP credential.",
+        "Call the endpoint to inspect the Solana MPP 402 challenge. Server-side payments are disabled for this showcase. {network} is the configured cluster.",
+      challenge: "402 challenge issued. Server-side payments are disabled for this showcase.",
       paid: "Solana MPP credential accepted. Paid API response delivered and joined by HANDLE.",
     },
   },
@@ -259,18 +247,12 @@ export function ShowcaseProviderScreen({ provider }: ShowcaseProviderScreenProps
     setResult(null);
 
     try {
-      const useCredentialPath = withCredential && config.publicPayEndpoint !== null;
       const response = await fetch(
-        useCredentialPath ? (config.publicPayEndpoint as string) : config.publicEndpoint,
+        config.publicEndpoint,
         {
           cache: "no-store",
-          method: useCredentialPath ? "POST" : "GET",
-          headers: {
-            accept: "application/json",
-            ...(useCredentialPath && config.payConfirmationValue
-              ? { "x-flovia-showcase-pay": config.payConfirmationValue }
-              : {}),
-          },
+          method: "GET",
+          headers: { accept: "application/json" },
         },
       );
       const body = await readResponseBody(response);
@@ -507,14 +489,16 @@ export function ShowcaseProviderScreen({ provider }: ShowcaseProviderScreenProps
               <button type="button" onClick={() => void callPaidApi(false)} style={buttonStyle(provider)} disabled={state === "calling"}>
                 Call paid API
               </button>
-              <button
-                type="button"
-                onClick={() => void callPaidApi(true)}
-                style={secondaryButtonStyle}
-                disabled={state === "calling" || (provider === "hitpay" && !hitPayCheckoutUrl)}
-              >
-                {config.payButtonLabel}
-              </button>
+              {provider === "hitpay" ? (
+                <button
+                  type="button"
+                  onClick={() => void callPaidApi(true)}
+                  style={secondaryButtonStyle}
+                  disabled={state === "calling" || !hitPayCheckoutUrl}
+                >
+                  {config.payButtonLabel}
+                </button>
+              ) : null}
               <a href={config.dashboardHref} target="_blank" rel="noreferrer" className="ghost" style={{ alignSelf: "center", fontSize: 13 }}>
                 Provider dashboard ↗
               </a>

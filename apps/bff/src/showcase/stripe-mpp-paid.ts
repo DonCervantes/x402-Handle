@@ -1,13 +1,10 @@
 import crypto from "node:crypto";
 import { Credential } from "mppx";
-import { Mppx as ClientMppx, tempo as clientTempo } from "mppx/client";
 import { Mppx as ServerMppx, tempo } from "mppx/server";
 import Stripe from "stripe";
-import { privateKeyToAccount } from "viem/accounts";
 import { flovia, json } from "./flovia-track-paid-api";
 
 const endpoint = "/showcase/stripe-mpp/paid";
-const payEndpoint = "/showcase/stripe-mpp/pay";
 const provider = "stripe" as const;
 const rail = "mpp" as const;
 const amount = "1.00";
@@ -56,13 +53,6 @@ const resolveStripeShowcaseConfig = () => {
   };
 
   return cachedConfig;
-};
-
-const resolveMppxPrivateKey = () => {
-  const privateKey = envValue("MPPX_PRIVATE_KEY");
-  return privateKey && /^0x[0-9a-fA-F]{64}$/.test(privateKey)
-    ? (privateKey as `0x${string}`)
-    : null;
 };
 
 const prunePaymentCache = () => {
@@ -148,7 +138,7 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
             error: "stripe_mpp_not_configured",
             message: "Set STRIPE_SECRET_KEY to enable the real Stripe MPP live showcase flow.",
             requiredEnv: ["STRIPE_SECRET_KEY"],
-            optionalEnv: ["MPPX_PRIVATE_KEY", "MPP_SECRET_KEY"],
+            optionalEnv: ["MPP_SECRET_KEY"],
             floviaEvent: {
               status: "configuration_required",
               responseStatus: 503,
@@ -235,62 +225,3 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
       );
     },
   });
-
-export const handleStripeMppPayShowcase = async (request: Request) => {
-  if (request.method !== "POST" || request.headers.get("x-flovia-showcase-pay") !== "stripe-mpp") {
-    return json(
-      {
-        error: "stripe_mpp_pay_confirmation_required",
-        message: "Stripe MPP demo wallet payments require a POST request from the showcase UI.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const privateKey = resolveMppxPrivateKey();
-
-  if (!privateKey) {
-    return json(
-      {
-        error: "mppx_private_key_not_configured",
-        message:
-          "Set MPPX_PRIVATE_KEY to a 0x-prefixed 32-byte Tempo payer private key to pay from the showcase button.",
-        requiredEnv: ["MPPX_PRIVATE_KEY"],
-      },
-      { status: 503 },
-    );
-  }
-
-  try {
-    const mppx = ClientMppx.create({
-      methods: [clientTempo({ account: privateKeyToAccount(privateKey) })],
-      polyfill: false,
-      fetch: ((input, init) => {
-        const paidRequest = new Request(input, init);
-        return handleStripeMppPaidShowcase(paidRequest);
-      }) as typeof globalThis.fetch,
-    });
-
-    const response = await mppx.fetch(new URL(endpoint, request.url), {
-      headers: { accept: "application/json" },
-    });
-    const headers = new Headers(response.headers);
-    headers.set("cache-control", "no-store");
-    headers.set("x-flovia-showcase-pay", "stripe-mpp");
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
-  } catch (error) {
-    return json(
-      {
-        error: "stripe_mpp_payment_failed",
-        message:
-          error instanceof Error && error.message ? error.message : "Stripe MPP payment failed.",
-        paidApi: { endpoint, payEndpoint },
-      },
-      { status: 502 },
-    );
-  }
-};

@@ -446,7 +446,7 @@ Implementación en `packages/intelligence/trust.ts`. Cada componente se persiste
 - **Rate limiting** en `/api/recommend` (caro por uso de LLM): 30 req/min por IP.
 - **Verificación de tx en x402**: siempre del lado del servidor consultando Horizon, nunca confiar en lo que envía el cliente.
 - **Memo único** por challenge: previene replay attacks aunque mismo monto/destino.
-- **Contrato Soroban**: `register_provider` exige `require_auth()` del owner; `log_payment` validado contra Token contract invocation.
+- **Contrato Soroban**: `register_provider` exige `require_auth()` del owner; `log_payment` exige autorización del owner del provider o un oracle habilitado, y registra el precio configurado del provider.
 
 ### 9. Variables de entorno
 
@@ -2038,13 +2038,13 @@ struct PaymentLog {
 | `register_provider(owner, name, endpoint, price, token, metadata_hash)` | `owner.require_auth()` | Inserts a new provider, emits `provider_registered` event |
 | `update_provider(id, ...)` | owner of provider | Updates mutable fields |
 | `deactivate(id)` | owner of provider | Sets `active = false` |
-| `log_payment(provider_id, payer, amount, tx_hash)` | open (anyone can attest) | Inserts a `PaymentLog` if not duplicate, emits `payment_logged` |
+| `log_payment(provider_id, payer, tx_hash, authorizer)` | Provider owner or allowlisted oracle (`require_auth`) | Inserts a `PaymentLog` at the provider's registered price if not duplicate |
 | `get_provider(id)` | read | Returns provider |
 | `list_providers()` | read | Returns all (paginated in production) |
 
 #### 3.4 Trust assumptions
 
-`log_payment` is callable by anyone, but the function validates that the supplied `tx_hash` corresponds to a real payment on Stellar matching the provider's expected destination and asset. In v1, this check is performed off-chain by the Flovia indexer and only attested on-chain. In future versions, we plan to integrate Soroban's cross-contract calls to a payment verification oracle, or move to a model where the provider's middleware itself submits the log call as part of serving the response.
+`log_payment` requires authorization from the provider owner or an oracle enabled by the registry admin. The signer attests the payer and transaction hash after verifying the payment off-chain (for example, against Horizon); Soroban does not query Horizon. The contract derives the logged amount from the provider's registered price rather than trusting an amount argument.
 
 ---
 

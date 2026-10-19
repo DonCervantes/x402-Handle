@@ -25,13 +25,14 @@ BFF showcase API endpoints:
 
 ```text
 GET  /showcase/stripe-mpp/paid
-POST /showcase/stripe-mpp/pay
 GET  /showcase/hitpay-mpp/paid
 GET  /showcase/solana-mpp/paid
-POST /showcase/solana-mpp/pay
 ```
 
-The frontend calls the BFF endpoints directly. No separate API provider server is introduced for the PoC.
+The frontend calls the BFF endpoints directly. Server-side Stripe and Solana
+pay routes are disabled; the public static confirmation headers are not
+payment authorization. No separate API provider server is introduced for the
+PoC.
 
 ## Information architecture
 
@@ -101,7 +102,7 @@ Sections:
 4. Live flow
    - `Call paid API` action against the BFF route on Solana devnet
    - 402 challenge with Solana recipient address and SPL mint
-   - `Pay with Solana wallet` posts to the BFF `/showcase/solana-mpp/pay` route, which uses a server-side payer keypair (`SOLANA_MPP_PAYER_PRIVATE_KEY`) via `@solana/mpp/client` to sign and submit the SPL transfer, then retries the paid endpoint with the MPP credential and returns the paid response. The payer wallet must hold devnet SOL (for fees) and devnet USDC (for the SPL transfer)
+   - Server-side payment is disabled; the BFF route only exposes the payment challenge and does not hold or spend a payer key.
 5. What Flovia captured
    - Payment: provider, rail, amount, currency, mint, recipient, network (`solana-devnet`)
    - API usage: endpoint, status, latency, request id

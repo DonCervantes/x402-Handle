@@ -293,13 +293,6 @@ export const createBffHandler = (
       }
 
       if (
-        request.method === "POST" &&
-        (path === "/showcase/stripe-mpp/pay" || path === "/showcase/solana-mpp/pay")
-      ) {
-        return handleShowcaseRoute(request, path) ?? notFound(path);
-      }
-
-      if (
         readonlyRoutes.has(path) ||
         showcaseRoutes.has(path) ||
         customerRoute !== null ||

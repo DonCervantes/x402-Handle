@@ -226,7 +226,7 @@ Implementación en `packages/intelligence/trust.ts`. Cada componente se persiste
 - **Rate limiting** en `/api/recommend` (caro por uso de LLM): 30 req/min por IP.
 - **Verificación de tx en x402**: siempre del lado del servidor consultando Horizon, nunca confiar en lo que envía el cliente.
 - **Memo único** por challenge: previene replay attacks aunque mismo monto/destino.
-- **Contrato Soroban**: `register_provider` exige `require_auth()` del owner; `log_payment` validado contra Token contract invocation.
+- **Contrato Soroban**: `register_provider` exige `require_auth()` del owner; `log_payment` exige autorización del owner del provider o un oracle habilitado, y registra el precio configurado del provider.
 
 ## 9. Variables de entorno
 

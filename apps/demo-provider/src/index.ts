@@ -47,7 +47,7 @@ app.use(
               network: NETWORK,
               sorobanUrl: process.env.SOROBAN_RPC_URL,
             },
-            { txHash, payer, amount }
+            { txHash, payer }
           );
           console.log(`[x402] payment logged on-chain — provider:${PROVIDER_ID} tx:${txHash.slice(0, 10)}...`);
         } catch (err) {

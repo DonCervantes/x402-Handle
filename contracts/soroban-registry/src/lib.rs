@@ -5,6 +5,7 @@
 //!   - DataKey::Admin               → Address (admin que puede pausar globalmente)
 //!   - DataKey::ProviderCounter     → u64 (auto-increment de provider_id)
 //!   - DataKey::Provider(u64)       → Provider
+//!   - DataKey::Oracle(Address)     → bool (oracle allowlist)
 //!   - DataKey::PaymentCounter      → u64
 //!   - DataKey::Payment(u64)        → PaymentLog
 //!   - DataKey::TxConsumed(BytesN<32>) → bool (replay protection)
@@ -69,6 +70,7 @@ enum DataKey {
     Admin,
     ProviderCounter,
     Provider(u64),
+    Oracle(Address),
     PaymentCounter,
     Payment(u64),
     TxConsumed(BytesN<32>),
@@ -87,6 +89,7 @@ impl FloviaRegistry {
         if env.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
@@ -97,6 +100,19 @@ impl FloviaRegistry {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    pub fn set_oracle(env: Env, oracle: Address, allowed: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Oracle(oracle), &allowed);
     }
 
     // ─── Provider management ───────────────────────────────────
@@ -262,24 +278,31 @@ impl FloviaRegistry {
 
     // ─── Payment log ────────────────────────────────────────────
 
-    /// Loguea un pago. Cualquiera puede llamar; la protección es
-    /// la unicidad de `tx_hash` (replay-proof).
-    /// En v2: restringir a llamadores autorizados (oracle, provider's middleware).
+    /// Registra un pago confirmado por el owner del provider o un oracle autorizado.
+    /// El monto se toma del precio registrado para no aceptar montos arbitrarios.
     pub fn log_payment(
         env: Env,
         provider_id: u64,
         payer: Address,
-        amount: u64,
         tx_hash: BytesN<32>,
+        authorizer: Address,
     ) -> u64 {
-        // El provider debe existir
         let provider: Provider = env
             .storage()
             .persistent()
             .get(&DataKey::Provider(provider_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotFound));
 
-        // Replay protection
+        let is_oracle: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Oracle(authorizer.clone()))
+            .unwrap_or(false);
+        if authorizer != provider.owner && !is_oracle {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        authorizer.require_auth();
+
         let consumed_key = DataKey::TxConsumed(tx_hash.clone());
         if env.storage().persistent().has(&consumed_key) {
             panic_with_error!(&env, Error::PaymentAlreadyLogged);
@@ -296,7 +319,7 @@ impl FloviaRegistry {
             id: counter,
             provider_id,
             payer: payer.clone(),
-            amount,
+            amount: provider.price_stroops,
             tx_hash: tx_hash.clone(),
             timestamp: env.ledger().timestamp(),
         };
@@ -309,9 +332,6 @@ impl FloviaRegistry {
             (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
             log.clone(),
         );
-
-        // silenciar warning por unused
-        let _ = provider;
 
         counter
     }
@@ -450,7 +470,7 @@ mod test {
     }
 
     #[test]
-    fn logs_payment_and_rejects_duplicate() {
+    fn logs_payment_at_registered_price_and_rejects_duplicate() {
         let (env, client, _) = setup();
         let owner = Address::generate(&env);
         let payer = Address::generate(&env);
@@ -467,12 +487,61 @@ mod test {
         );
 
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
-        let pid1 = client.log_payment(&id, &payer, &50_000u64, &tx_hash);
+        let pid1 = client.log_payment(&id, &payer, &tx_hash, &owner);
         assert_eq!(pid1, 1);
+        assert_eq!(client.get_payment(&pid1).amount, 10);
 
         // Duplicado debe fallar
-        let result = client.try_log_payment(&id, &payer, &50_000u64, &tx_hash);
+        let result = client.try_log_payment(&id, &payer, &tx_hash, &owner);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_payment_from_unapproved_authorizer() {
+        let (env, client, _) = setup();
+        let owner = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "X"),
+            &String::from_str(&env, "https://x.io"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+
+        let tx_hash = BytesN::from_array(&env, &[8u8; 32]);
+        let result = client.try_log_payment(&id, &payer, &tx_hash, &unauthorized);
+        assert!(result.is_err());
+        assert_eq!(client.payment_count(), 0);
+    }
+
+    #[test]
+    fn logs_payment_from_allowlisted_oracle() {
+        let (env, client, _) = setup();
+        let oracle = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "X"),
+            &String::from_str(&env, "https://x.io"),
+            &25u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+
+        client.set_oracle(&oracle, &true);
+        let tx_hash = BytesN::from_array(&env, &[9u8; 32]);
+        let payment_id = client.log_payment(&id, &payer, &tx_hash, &oracle);
+        assert_eq!(client.get_payment(&payment_id).amount, 25);
     }
 
     #[test]

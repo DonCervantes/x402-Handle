@@ -31,28 +31,23 @@ name: deploy-lightsail-shared
 # - HITPAY_WEBHOOK_SALT
 # - HITPAY_MPP_ENDPOINT
 # - STRIPE_SECRET_KEY
-# - MPPX_PRIVATE_KEY
 # - MAIN_STRIPE_SECRET_KEY
 # - DEVELOP_STRIPE_SECRET_KEY
-# - DEVELOP_MPPX_PRIVATE_KEY
 # - DEVELOP_MPP_SECRET_KEY
 # - SOLANA_MPP_RECIPIENT
 # - SOLANA_MPP_NETWORK
 # - SOLANA_MPP_CURRENCY
 # - SOLANA_MPP_SECRET_KEY
-# - SOLANA_MPP_PAYER_PRIVATE_KEY
 # - SOLANA_MPP_RPC_URL
 # - MAIN_SOLANA_MPP_RECIPIENT
 # - MAIN_SOLANA_MPP_NETWORK
 # - MAIN_SOLANA_MPP_CURRENCY
 # - MAIN_SOLANA_MPP_SECRET_KEY
-# - MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY
 # - MAIN_SOLANA_MPP_RPC_URL
 # - DEVELOP_SOLANA_MPP_RECIPIENT
 # - DEVELOP_SOLANA_MPP_NETWORK
 # - DEVELOP_SOLANA_MPP_CURRENCY
 # - DEVELOP_SOLANA_MPP_SECRET_KEY
-# - DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY
 # - DEVELOP_SOLANA_MPP_RPC_URL
 
 # Deploy layout on the instance:
@@ -197,28 +192,23 @@ jobs:
           HITPAY_WEBHOOK_SALT: ${{ secrets.HITPAY_WEBHOOK_SALT }}
           HITPAY_MPP_ENDPOINT: ${{ secrets.HITPAY_MPP_ENDPOINT }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          MPPX_PRIVATE_KEY: ${{ secrets.MPPX_PRIVATE_KEY }}
           MAIN_STRIPE_SECRET_KEY: ${{ secrets.MAIN_STRIPE_SECRET_KEY }}
           DEVELOP_STRIPE_SECRET_KEY: ${{ secrets.DEVELOP_STRIPE_SECRET_KEY }}
-          DEVELOP_MPPX_PRIVATE_KEY: ${{ secrets.DEVELOP_MPPX_PRIVATE_KEY }}
           DEVELOP_MPP_SECRET_KEY: ${{ secrets.DEVELOP_MPP_SECRET_KEY }}
           SOLANA_MPP_RECIPIENT: ${{ secrets.SOLANA_MPP_RECIPIENT }}
           SOLANA_MPP_NETWORK: ${{ secrets.SOLANA_MPP_NETWORK }}
           SOLANA_MPP_CURRENCY: ${{ secrets.SOLANA_MPP_CURRENCY }}
           SOLANA_MPP_SECRET_KEY: ${{ secrets.SOLANA_MPP_SECRET_KEY }}
-          SOLANA_MPP_PAYER_PRIVATE_KEY: ${{ secrets.SOLANA_MPP_PAYER_PRIVATE_KEY }}
           SOLANA_MPP_RPC_URL: ${{ secrets.SOLANA_MPP_RPC_URL }}
           MAIN_SOLANA_MPP_RECIPIENT: ${{ secrets.MAIN_SOLANA_MPP_RECIPIENT }}
           MAIN_SOLANA_MPP_NETWORK: ${{ secrets.MAIN_SOLANA_MPP_NETWORK }}
           MAIN_SOLANA_MPP_CURRENCY: ${{ secrets.MAIN_SOLANA_MPP_CURRENCY }}
           MAIN_SOLANA_MPP_SECRET_KEY: ${{ secrets.MAIN_SOLANA_MPP_SECRET_KEY }}
-          MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY: ${{ secrets.MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY }}
           MAIN_SOLANA_MPP_RPC_URL: ${{ secrets.MAIN_SOLANA_MPP_RPC_URL }}
           DEVELOP_SOLANA_MPP_RECIPIENT: ${{ secrets.DEVELOP_SOLANA_MPP_RECIPIENT }}
           DEVELOP_SOLANA_MPP_NETWORK: ${{ secrets.DEVELOP_SOLANA_MPP_NETWORK }}
           DEVELOP_SOLANA_MPP_CURRENCY: ${{ secrets.DEVELOP_SOLANA_MPP_CURRENCY }}
           DEVELOP_SOLANA_MPP_SECRET_KEY: ${{ secrets.DEVELOP_SOLANA_MPP_SECRET_KEY }}
-          DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY: ${{ secrets.DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY }}
           DEVELOP_SOLANA_MPP_RPC_URL: ${{ secrets.DEVELOP_SOLANA_MPP_RPC_URL }}
         run: |
           set -euo pipefail
@@ -244,28 +234,23 @@ jobs:
           hitpay_webhook_salt_b64="$(encode_env HITPAY_WEBHOOK_SALT)"
           hitpay_mpp_endpoint_b64="$(encode_env HITPAY_MPP_ENDPOINT)"
           stripe_secret_key_b64="$(encode_env STRIPE_SECRET_KEY)"
-          mppx_private_key_b64="$(encode_env MPPX_PRIVATE_KEY)"
           main_stripe_secret_key_b64="$(encode_env MAIN_STRIPE_SECRET_KEY)"
           develop_stripe_secret_key_b64="$(encode_env DEVELOP_STRIPE_SECRET_KEY)"
-          develop_mppx_private_key_b64="$(encode_env DEVELOP_MPPX_PRIVATE_KEY)"
           develop_mpp_secret_key_b64="$(encode_env DEVELOP_MPP_SECRET_KEY)"
           solana_mpp_recipient_b64="$(encode_env SOLANA_MPP_RECIPIENT)"
           solana_mpp_network_b64="$(encode_env SOLANA_MPP_NETWORK)"
           solana_mpp_currency_b64="$(encode_env SOLANA_MPP_CURRENCY)"
           solana_mpp_secret_key_b64="$(encode_env SOLANA_MPP_SECRET_KEY)"
-          solana_mpp_payer_private_key_b64="$(encode_env SOLANA_MPP_PAYER_PRIVATE_KEY)"
           solana_mpp_rpc_url_b64="$(encode_env SOLANA_MPP_RPC_URL)"
           main_solana_mpp_recipient_b64="$(encode_env MAIN_SOLANA_MPP_RECIPIENT)"
           main_solana_mpp_network_b64="$(encode_env MAIN_SOLANA_MPP_NETWORK)"
           main_solana_mpp_currency_b64="$(encode_env MAIN_SOLANA_MPP_CURRENCY)"
           main_solana_mpp_secret_key_b64="$(encode_env MAIN_SOLANA_MPP_SECRET_KEY)"
-          main_solana_mpp_payer_private_key_b64="$(encode_env MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY)"
           main_solana_mpp_rpc_url_b64="$(encode_env MAIN_SOLANA_MPP_RPC_URL)"
           develop_solana_mpp_recipient_b64="$(encode_env DEVELOP_SOLANA_MPP_RECIPIENT)"
           develop_solana_mpp_network_b64="$(encode_env DEVELOP_SOLANA_MPP_NETWORK)"
           develop_solana_mpp_currency_b64="$(encode_env DEVELOP_SOLANA_MPP_CURRENCY)"
           develop_solana_mpp_secret_key_b64="$(encode_env DEVELOP_SOLANA_MPP_SECRET_KEY)"
-          develop_solana_mpp_payer_private_key_b64="$(encode_env DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY)"
           develop_solana_mpp_rpc_url_b64="$(encode_env DEVELOP_SOLANA_MPP_RPC_URL)"
 
           ssh \
@@ -301,28 +286,23 @@ jobs:
             HITPAY_WEBHOOK_SALT_B64="${hitpay_webhook_salt_b64}" \
             HITPAY_MPP_ENDPOINT_B64="${hitpay_mpp_endpoint_b64}" \
             STRIPE_SECRET_KEY_B64="${stripe_secret_key_b64}" \
-            MPPX_PRIVATE_KEY_B64="${mppx_private_key_b64}" \
             MAIN_STRIPE_SECRET_KEY_B64="${main_stripe_secret_key_b64}" \
             DEVELOP_STRIPE_SECRET_KEY_B64="${develop_stripe_secret_key_b64}" \
-            DEVELOP_MPPX_PRIVATE_KEY_B64="${develop_mppx_private_key_b64}" \
             DEVELOP_MPP_SECRET_KEY_B64="${develop_mpp_secret_key_b64}" \
             SOLANA_MPP_RECIPIENT_B64="${solana_mpp_recipient_b64}" \
             SOLANA_MPP_NETWORK_B64="${solana_mpp_network_b64}" \
             SOLANA_MPP_CURRENCY_B64="${solana_mpp_currency_b64}" \
             SOLANA_MPP_SECRET_KEY_B64="${solana_mpp_secret_key_b64}" \
-            SOLANA_MPP_PAYER_PRIVATE_KEY_B64="${solana_mpp_payer_private_key_b64}" \
             SOLANA_MPP_RPC_URL_B64="${solana_mpp_rpc_url_b64}" \
             MAIN_SOLANA_MPP_RECIPIENT_B64="${main_solana_mpp_recipient_b64}" \
             MAIN_SOLANA_MPP_NETWORK_B64="${main_solana_mpp_network_b64}" \
             MAIN_SOLANA_MPP_CURRENCY_B64="${main_solana_mpp_currency_b64}" \
             MAIN_SOLANA_MPP_SECRET_KEY_B64="${main_solana_mpp_secret_key_b64}" \
-            MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY_B64="${main_solana_mpp_payer_private_key_b64}" \
             MAIN_SOLANA_MPP_RPC_URL_B64="${main_solana_mpp_rpc_url_b64}" \
             DEVELOP_SOLANA_MPP_RECIPIENT_B64="${develop_solana_mpp_recipient_b64}" \
             DEVELOP_SOLANA_MPP_NETWORK_B64="${develop_solana_mpp_network_b64}" \
             DEVELOP_SOLANA_MPP_CURRENCY_B64="${develop_solana_mpp_currency_b64}" \
             DEVELOP_SOLANA_MPP_SECRET_KEY_B64="${develop_solana_mpp_secret_key_b64}" \
-            DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY_B64="${develop_solana_mpp_payer_private_key_b64}" \
             DEVELOP_SOLANA_MPP_RPC_URL_B64="${develop_solana_mpp_rpc_url_b64}" \
             "bash -s" <<'EOF'
           set -euo pipefail
@@ -355,28 +335,23 @@ jobs:
           decode_env HITPAY_WEBHOOK_SALT_B64 HITPAY_WEBHOOK_SALT
           decode_env HITPAY_MPP_ENDPOINT_B64 HITPAY_MPP_ENDPOINT
           decode_env STRIPE_SECRET_KEY_B64 STRIPE_SECRET_KEY
-          decode_env MPPX_PRIVATE_KEY_B64 MPPX_PRIVATE_KEY
           decode_env MAIN_STRIPE_SECRET_KEY_B64 MAIN_STRIPE_SECRET_KEY
           decode_env DEVELOP_STRIPE_SECRET_KEY_B64 DEVELOP_STRIPE_SECRET_KEY
-          decode_env DEVELOP_MPPX_PRIVATE_KEY_B64 DEVELOP_MPPX_PRIVATE_KEY
           decode_env DEVELOP_MPP_SECRET_KEY_B64 DEVELOP_MPP_SECRET_KEY
           decode_env SOLANA_MPP_RECIPIENT_B64 SOLANA_MPP_RECIPIENT
           decode_env SOLANA_MPP_NETWORK_B64 SOLANA_MPP_NETWORK
           decode_env SOLANA_MPP_CURRENCY_B64 SOLANA_MPP_CURRENCY
           decode_env SOLANA_MPP_SECRET_KEY_B64 SOLANA_MPP_SECRET_KEY
-          decode_env SOLANA_MPP_PAYER_PRIVATE_KEY_B64 SOLANA_MPP_PAYER_PRIVATE_KEY
           decode_env SOLANA_MPP_RPC_URL_B64 SOLANA_MPP_RPC_URL
           decode_env MAIN_SOLANA_MPP_RECIPIENT_B64 MAIN_SOLANA_MPP_RECIPIENT
           decode_env MAIN_SOLANA_MPP_NETWORK_B64 MAIN_SOLANA_MPP_NETWORK
           decode_env MAIN_SOLANA_MPP_CURRENCY_B64 MAIN_SOLANA_MPP_CURRENCY
           decode_env MAIN_SOLANA_MPP_SECRET_KEY_B64 MAIN_SOLANA_MPP_SECRET_KEY
-          decode_env MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY_B64 MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY
           decode_env MAIN_SOLANA_MPP_RPC_URL_B64 MAIN_SOLANA_MPP_RPC_URL
           decode_env DEVELOP_SOLANA_MPP_RECIPIENT_B64 DEVELOP_SOLANA_MPP_RECIPIENT
           decode_env DEVELOP_SOLANA_MPP_NETWORK_B64 DEVELOP_SOLANA_MPP_NETWORK
           decode_env DEVELOP_SOLANA_MPP_CURRENCY_B64 DEVELOP_SOLANA_MPP_CURRENCY
           decode_env DEVELOP_SOLANA_MPP_SECRET_KEY_B64 DEVELOP_SOLANA_MPP_SECRET_KEY
-          decode_env DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY_B64 DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY
           decode_env DEVELOP_SOLANA_MPP_RPC_URL_B64 DEVELOP_SOLANA_MPP_RPC_URL
 
           apps_root="$HOME/apps"

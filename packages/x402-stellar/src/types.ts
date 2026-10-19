@@ -60,6 +60,7 @@ export type VerifyFailureReason =
   | "underpayment"
   | "already_consumed"
   | "challenge_expired"
+  | "unknown_memo"
   | "horizon_error";
 
 export type VerifyResult =
