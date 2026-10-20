@@ -9,7 +9,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { AeoDiscovery } from "contracts";
+import {
+  type AeoDiscovery,
+  type DiscoverySnapshotSource,
+  DiscoverySnapshotSourceSchema,
+} from "contracts";
 import {
   type AeoAggregateOptions,
   type FetchX402DiscoveryOptions,
@@ -35,12 +39,39 @@ export type X402DiscoveryStoreStatus = {
   persistError?: string;
 };
 
+/**
+ * Provenance of the catalog currently in memory, as signed into discovery
+ * snapshots: `seed` = the committed baseline, `live` = a facilitator refresh
+ * (possibly loaded back from disk after a restart). `generatedAt` is when that
+ * data was produced, not when this process loaded it.
+ */
+export type X402DiscoveryProvenance = {
+  source: DiscoverySnapshotSource;
+  generatedAt: string;
+  staleFacilitators: X402Facilitator[];
+};
+
+export type X402DiscoverySnapshot = X402DiscoveryProvenance & {
+  /** Increments every time the in-memory catalog is replaced. */
+  revision: number;
+  items: Record<X402Facilitator, X402DiscoveryItem[]>;
+};
+
 export type X402DiscoveryStore = {
   loadInitial(): X402DiscoveryStoreStatus;
   refresh(options?: FetchX402DiscoveryOptions): Promise<X402DiscoveryStoreStatus>;
   getAggregate(serviceHost: string, options?: AeoAggregateOptions): AeoDiscovery | null;
   status(): X402DiscoveryStoreStatus;
+  /** Current catalog with its provenance; null when nothing is loaded. */
+  snapshot(): X402DiscoverySnapshot | null;
 };
+
+// Provenance sidecar written next to the facilitator files. The committed seed
+// ships one recording when it was captured.
+export const X402_DISCOVERY_META_FILE = "meta.json";
+
+// Used when no sidecar exists: an unknown age must never look fresh.
+const UNKNOWN_GENERATED_AT = new Date(0).toISOString();
 
 // apps/bff/data/x402-discovery (resolved relative to this module so it works in
 // dev and in the Docker image, where apps/bff is copied wholesale).
@@ -74,9 +105,42 @@ const readSnapshotFile = (dirs: string[], facilitator: X402Facilitator): X402Dis
   return [];
 };
 
+const readProvenance = (dirs: string[]): X402DiscoveryProvenance => {
+  for (const dir of dirs) {
+    const file = path.join(dir, X402_DISCOVERY_META_FILE);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      const source = DiscoverySnapshotSourceSchema.safeParse(parsed.source);
+      const generatedAt =
+        typeof parsed.generatedAt === "string" && !Number.isNaN(Date.parse(parsed.generatedAt))
+          ? new Date(parsed.generatedAt).toISOString()
+          : UNKNOWN_GENERATED_AT;
+      const stale = Array.isArray(parsed.staleFacilitators)
+        ? X402_FACILITATORS.filter((f) => (parsed.staleFacilitators as unknown[]).includes(f))
+        : [];
+      return {
+        source: source.success ? source.data : "seed",
+        generatedAt,
+        staleFacilitators: stale,
+      };
+    } catch (error) {
+      console.error(`Failed to read x402 discovery provenance ${file}`, error);
+      break;
+    }
+  }
+  return { source: "seed", generatedAt: UNKNOWN_GENERATED_AT, staleFacilitators: [] };
+};
+
 export const createX402DiscoveryStore = (
-  config: { dir?: string; dataDir?: string } = {},
+  config: {
+    dir?: string;
+    dataDir?: string;
+    /** Injectable for tests; defaults to the facilitator fetcher from `sources`. */
+    fetchDiscovery?: typeof fetchX402Discovery;
+  } = {},
 ): X402DiscoveryStore => {
+  const fetchDiscovery = config.fetchDiscovery ?? fetchX402Discovery;
   // Committed read-only baseline (shipped in the image).
   const seedDir = config.dir ?? process.env.BFF_X402_DISCOVERY_DIR ?? DEFAULT_X402_DISCOVERY_DIR;
   // Writable location the refresh job persists to and startup prefers on load.
@@ -92,6 +156,8 @@ export const createX402DiscoveryStore = (
   let lastRefreshErrors: Partial<Record<X402Facilitator, string>> | undefined;
   let lastPersistAt: string | undefined;
   let persistError: string | undefined;
+  let provenance: X402DiscoveryProvenance | null = null;
+  let revision = 0;
 
   const counts = (): Record<X402Facilitator, number> => ({
     cdp: items.cdp.length,
@@ -121,6 +187,13 @@ export const createX402DiscoveryStore = (
         fs.writeFileSync(tmp, JSON.stringify(items[facilitator]));
         fs.renameSync(tmp, target);
       }
+      // Provenance last, so a crash mid-persist never labels old files as fresh.
+      if (provenance) {
+        const target = path.join(dataDir, X402_DISCOVERY_META_FILE);
+        const tmp = `${target}.tmp-${process.pid}`;
+        fs.writeFileSync(tmp, JSON.stringify(provenance));
+        fs.renameSync(tmp, target);
+      }
       lastPersistAt = new Date().toISOString();
       persistError = undefined;
     } catch (error) {
@@ -139,13 +212,15 @@ export const createX402DiscoveryStore = (
     source =
       loaded.cdp.length + loaded.dexter.length + loaded.payai.length > 0 ? "snapshot" : "empty";
     fetchedAt = new Date().toISOString();
+    provenance = source === "empty" ? null : readProvenance(readDirs);
+    revision += 1;
     return status();
   };
 
   const refresh = async (
     options: FetchX402DiscoveryOptions = {},
   ): Promise<X402DiscoveryStoreStatus> => {
-    const result = await fetchX402Discovery({
+    const result = await fetchDiscovery({
       ...options,
       mapItem: options.mapItem ?? slimX402DiscoveryItem,
     });
@@ -160,6 +235,17 @@ export const createX402DiscoveryStore = (
     fetchedAt = result.fetchedAt;
     lastRefreshAt = result.fetchedAt;
     lastRefreshErrors = Object.keys(result.errors).length > 0 ? result.errors : undefined;
+    const staleFacilitators = X402_FACILITATORS.filter((f) => result.errors[f] !== undefined);
+    // If every facilitator failed nothing was refreshed: keep the old provenance
+    // rather than relabeling old data as a fresh live pull.
+    if (staleFacilitators.length < X402_FACILITATORS.length) {
+      provenance = {
+        source: "live",
+        generatedAt: new Date(result.fetchedAt).toISOString(),
+        staleFacilitators,
+      };
+      revision += 1;
+    }
 
     // Persist the refreshed snapshot locally so startup can load it next time.
     persist();
@@ -175,5 +261,8 @@ export const createX402DiscoveryStore = (
       description: options.description,
     });
 
-  return { loadInitial, refresh, getAggregate, status };
+  const snapshot = (): X402DiscoverySnapshot | null =>
+    provenance ? { ...provenance, revision, items } : null;
+
+  return { loadInitial, refresh, getAggregate, status, snapshot };
 };

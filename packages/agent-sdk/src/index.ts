@@ -5,6 +5,11 @@
 // con su propio secret).
 import type { StellarProvider } from "contracts";
 import { x402Pay } from "@flovia/x402-stellar/client";
+import {
+  type VerifiedDiscoverySnapshot,
+  type VerifyDiscoverySnapshotOpts,
+  verifyDiscoverySnapshot,
+} from "./discovery-snapshot";
 import type {
   DiscoverAndCallOpts,
   DiscoverAndCallResult,
@@ -20,6 +25,14 @@ export type {
   RankedStellarProvider,
   RecommendOpts,
 } from "./types";
+
+export {
+  DiscoverySnapshotError,
+  type DiscoverySnapshotErrorCode,
+  type VerifiedDiscoverySnapshot,
+  type VerifyDiscoverySnapshotOpts,
+  verifyDiscoverySnapshot,
+} from "./discovery-snapshot";
 
 const DEFAULT_BFF_URL = "http://localhost:3001";
 
@@ -42,6 +55,20 @@ export class Flovia {
     const res = await fetch(`${this.bffUrl}/stellar/providers`);
     if (!res.ok) throw new Error(`Flovia.discover: BFF respondió ${res.status}`);
     return (await res.json()) as StellarProvider[];
+  }
+
+  /**
+   * Catálogo x402 firmado del BFF, verificado offline con la clave pública
+   * fijada por el agente (`publicKey`, de GET /aeo/x402/signing-key). Lanza
+   * DiscoverySnapshotError si la firma no es válida o el snapshot es más viejo
+   * que `maxAgeMs` (24h por defecto). No usa el token de refresh.
+   */
+  async discoverySnapshot<T = unknown>(
+    opts: VerifyDiscoverySnapshotOpts,
+  ): Promise<VerifiedDiscoverySnapshot<T>> {
+    const res = await fetch(`${this.bffUrl}/aeo/x402/snapshot`);
+    if (!res.ok) throw new Error(`Flovia.discoverySnapshot: BFF respondió ${res.status}`);
+    return verifyDiscoverySnapshot<T>(await res.json(), opts);
   }
 
   /** Providers rankeados por Trust Score + precio + categoría (determinístico, no IA). */

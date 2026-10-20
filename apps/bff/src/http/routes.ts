@@ -6,6 +6,8 @@ export const readonlyRoutes = new Set([
   "/customers",
   "/wallet-usage-graph",
   "/aeo/x402",
+  "/aeo/x402/snapshot",
+  "/aeo/x402/signing-key",
   "/analytics/services/coingecko/summary",
   "/analytics/services/comparison",
   "/analytics/services/quadrants",
@@ -45,6 +47,10 @@ export const matchStellarProviderRoute = (path: string): StellarProviderRouteMat
 
 // Authorized POST endpoint that triggers a live x402 discovery refresh.
 export const AEO_X402_REFRESH_PATH = "/aeo/x402/refresh";
+
+// Public GETs: the signed discovery catalog and the key that verifies it.
+export const AEO_X402_SNAPSHOT_PATH = "/aeo/x402/snapshot";
+export const AEO_X402_SIGNING_KEY_PATH = "/aeo/x402/signing-key";
 
 export type CustomerRouteKind =
   | "profile"
