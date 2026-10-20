@@ -9,8 +9,10 @@ import { BffLlmUnavailableError, type BffLlmService, resolveBffLlmService } from
 import { type ProviderListView, deriveProviderListView } from "./data/provider-list-view";
 import { buildWorkflowIntentInputFromProfile, toWorkflowIntentInput } from "./data/workflow-intent";
 import { type X402DiscoveryStore, createX402DiscoveryStore } from "./data/x402-discovery/store";
+import { type DiscoverySigner, resolveDiscoverySigner } from "./data/x402-discovery/signing";
 import {
   json,
+  SNAPSHOT_CACHE_CONTROL,
   analyticsLoading,
   analyticsUnavailable,
   badRequest,
@@ -28,6 +30,8 @@ import {
 } from "./http/responses";
 import {
   AEO_X402_REFRESH_PATH,
+  AEO_X402_SIGNING_KEY_PATH,
+  AEO_X402_SNAPSHOT_PATH,
   STELLAR_PLAYGROUND_PAY_PATH,
   matchCustomerRoute,
   matchProviderDetailRoute,
@@ -121,6 +125,7 @@ export const createBffHandler = (
   llmService: BffLlmService | null = resolveBffLlmService(),
   runtimeMetadata: BffRuntimeMetadata = resolveBffRuntimeMetadata(),
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
+  discoverySigner?: DiscoverySigner,
 ) => {
   let analyticsState: AnalyticsLoadState;
 
@@ -246,6 +251,41 @@ export const createBffHandler = (
     }
   };
 
+  // Resolved on first use so handlers that never serve discovery don't need a key.
+  let signer = discoverySigner ?? null;
+  const getSigner = (): DiscoverySigner => {
+    signer ??= resolveDiscoverySigner();
+    return signer;
+  };
+
+  // The catalog can be megabytes: sign and serialize it once per revision.
+  let signedSnapshotCache: { revision: number; body: string } | null = null;
+
+  const handleDiscoverySnapshot = (): Response => {
+    const snapshot = x402Store.snapshot();
+    if (!snapshot) {
+      return json(
+        { error: "x402_snapshot_unavailable", message: "No x402 discovery snapshot is loaded." },
+        { status: 503 },
+      );
+    }
+    if (signedSnapshotCache?.revision !== snapshot.revision) {
+      const signed = getSigner().signSnapshot({
+        source: snapshot.source,
+        generatedAt: snapshot.generatedAt,
+        staleFacilitators: snapshot.staleFacilitators,
+        data: snapshot.items,
+      });
+      signedSnapshotCache = { revision: snapshot.revision, body: JSON.stringify(signed) };
+    }
+    return new Response(signedSnapshotCache.body, {
+      headers: {
+        "content-type": "application/json;charset=utf-8",
+        "cache-control": SNAPSHOT_CACHE_CONTROL,
+      },
+    });
+  };
+
   return async (request: Request, server?: RequestTimeoutController) => {
     const url = new URL(request.url);
     const path = normalizePath(url);
@@ -349,6 +389,11 @@ export const createBffHandler = (
           service: "flovia-bff",
           ...analyticsStatusBody(),
         });
+      case AEO_X402_SNAPSHOT_PATH:
+        // Signed catalog; verifiable offline with the published key (no refresh token).
+        return handleDiscoverySnapshot();
+      case AEO_X402_SIGNING_KEY_PATH:
+        return cachedJson(getSigner().publicKeyDocument());
       case "/aeo/x402": {
         // Independent of the analytics read model — served from the discovery store.
         // `service` may be a comma-separated list of candidate hosts; the first

@@ -30,6 +30,8 @@ x-main-bff: &main-bff
     # Authorized x402 discovery refresh token (external cron POSTs /aeo/x402/refresh).
     # Empty -> refresh endpoint disabled (403).
     BFF_X402_REFRESH_TOKEN: ${MAIN_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
+    # Ed25519 key signing GET /aeo/x402/snapshot. Empty -> ephemeral per-restart key.
+    BFF_DISCOVERY_SIGNING_KEY: ${MAIN_BFF_DISCOVERY_SIGNING_KEY:-${BFF_DISCOVERY_SIGNING_KEY:-}}
     # Persist refreshed discovery data on the /data volume so it survives redeploys.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
     # Fall back to DEVELOP_HITPAY_* when MAIN_HITPAY_* is not configured
@@ -74,6 +76,8 @@ x-develop-bff: &develop-bff
     # Authorized x402 discovery refresh token (external cron POSTs /aeo/x402/refresh).
     # Empty -> refresh endpoint disabled (403).
     BFF_X402_REFRESH_TOKEN: ${DEVELOP_BFF_X402_REFRESH_TOKEN:-${BFF_X402_REFRESH_TOKEN:-}}
+    # Ed25519 key signing GET /aeo/x402/snapshot. Empty -> ephemeral per-restart key.
+    BFF_DISCOVERY_SIGNING_KEY: ${DEVELOP_BFF_DISCOVERY_SIGNING_KEY:-${BFF_DISCOVERY_SIGNING_KEY:-}}
     # Persist refreshed discovery data on the /data volume so it survives redeploys.
     BFF_X402_DISCOVERY_DATA_DIR: /data/x402-discovery
     HITPAY_API_KEY: ${DEVELOP_HITPAY_API_KEY:-${HITPAY_API_KEY:-}}

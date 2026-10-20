@@ -1,5 +1,6 @@
 import { createBffHandler } from "./http";
 import { createX402DiscoveryStore } from "./data/x402-discovery/store";
+import { resolveDiscoverySigner } from "./data/x402-discovery/signing";
 
 const port = Number(process.env.PORT ?? "3001");
 const idleTimeout = Number(process.env.BFF_HTTP_IDLE_TIMEOUT_SECONDS ?? "60");
@@ -13,7 +14,14 @@ console.log(
   `x402 discovery store: source=${x402Status.source} cdp=${x402Status.counts.cdp} dexter=${x402Status.counts.dexter} payai=${x402Status.counts.payai}`,
 );
 
-const handler = createBffHandler(undefined, undefined, undefined, x402Store);
+// Signs the discovery catalog served at /aeo/x402/snapshot (key published at
+// /aeo/x402/signing-key). Set BFF_DISCOVERY_SIGNING_KEY in production.
+const discoverySigner = resolveDiscoverySigner();
+console.log(
+  `x402 discovery signing key: keyId=${discoverySigner.keyId} ephemeral=${discoverySigner.ephemeral}`,
+);
+
+const handler = createBffHandler(undefined, undefined, undefined, x402Store, discoverySigner);
 
 Bun.serve({
   port,
