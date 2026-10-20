@@ -11,17 +11,14 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { randomUUID } from "node:crypto";
 
-import {
-  X402_VERSION,
-  type X402Challenge,
-  type X402ServerConfig,
-} from "./types";
+import { X402_VERSION, type X402Challenge, type X402ServerConfig } from "./types";
 import { verifyUsdcPayment } from "./verify";
 import { defaultReplayCache, type ReplayCache } from "./replay-cache";
+import { defaultChallengeStore, type ChallengeStore } from "./challenge-store";
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  public: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 };
 
 /**
@@ -34,12 +31,37 @@ function newMemo(): string {
 
 export interface X402StellarMiddlewareOpts extends X402ServerConfig {
   replayCache?: ReplayCache;
+  challengeStore?: ChallengeStore;
 }
 
 export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler {
   const cache = opts.replayCache ?? defaultReplayCache;
+  const challengeStore = opts.challengeStore ?? defaultChallengeStore;
   const ttl = opts.challengeTtlSec ?? 300;
   const issuer = opts.usdcIssuer ?? USDC_ISSUERS[opts.network];
+
+  function issueChallenge(): X402Challenge {
+    const memo = newMemo();
+    const expiresAtMs = Date.now() + ttl * 1000;
+    const challenge: X402Challenge = {
+      version: X402_VERSION,
+      network: opts.network,
+      asset: { code: "USDC", issuer },
+      amount: opts.amountUsdc,
+      destination: opts.destination,
+      memo,
+      expires_at: new Date(expiresAtMs).toISOString(),
+    };
+    challengeStore.add({
+      memo,
+      destination: opts.destination,
+      amount: opts.amountUsdc,
+      network: opts.network,
+      asset: { code: "USDC", issuer },
+      expiresAt: expiresAtMs,
+    });
+    return challenge;
+  }
 
   return async (c: Context, next) => {
     // Si hay pathPattern y no matchea, dejar pasar libre
@@ -51,24 +73,14 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
 
     // ─── Sin pago: responder 402 con challenge ───────────────────────
     if (!paymentHeader) {
-      const memo = newMemo();
-      const challenge: X402Challenge = {
-        version: X402_VERSION,
-        network: opts.network,
-        asset: { code: "USDC", issuer },
-        amount: opts.amountUsdc,
-        destination: opts.destination,
-        memo,
-        expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
-      };
+      const challenge = issueChallenge();
       // Header informativo (opcional, no requerido por protocolo)
-      c.header("X-PAYMENT-MEMO", memo);
+      c.header("X-PAYMENT-MEMO", challenge.memo);
       return c.json(challenge, 402);
     }
 
     // ─── Con pago: verificar ───────────────────────────────────────
     // El cliente debe enviar: X-PAYMENT: <tx_hash>;memo=<memo>
-    // (admitimos también sólo <tx_hash> y validamos memo from Horizon)
     let txHash = paymentHeader.trim();
     let expectedMemo: string | undefined;
     if (paymentHeader.includes(";")) {
@@ -81,41 +93,36 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
     }
 
     if (cache.has(txHash)) {
-      return c.json(
-        { error: "already_consumed", detail: "This payment was already used." },
-        402
-      );
+      return c.json({ error: "already_consumed", detail: "This payment was already used." }, 402);
     }
 
     // Si el cliente no envió memo, no podemos verificar sin él.
-    // Lo recuperamos del request si fue enviado en query param "memo" como fallback,
-    // o pedimos que se reenvíe el challenge (regenerar).
     if (!expectedMemo) {
-      expectedMemo = c.req.query("memo");
-    }
-    if (!expectedMemo) {
-      // No tenemos contra qué validar el memo → no podemos confirmar el pago
-      const memo = newMemo();
-      const challenge: X402Challenge = {
-        version: X402_VERSION,
-        network: opts.network,
-        asset: { code: "USDC", issuer },
-        amount: opts.amountUsdc,
-        destination: opts.destination,
-        memo,
-        expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
-      };
+      const challenge = issueChallenge();
+      c.header("X-PAYMENT-MEMO", challenge.memo);
       return c.json({ ...challenge, error: "missing_memo" }, 402);
+    }
+
+    // Validar que el memo haya sido emitido por este servidor y siga almacenado
+    const storedChallenge = challengeStore.get(expectedMemo);
+    if (!storedChallenge) {
+      return c.json(
+        {
+          error: "unknown_memo",
+          detail: "The provided memo was not issued by this server or has expired.",
+        },
+        402,
+      );
     }
 
     const result = await verifyUsdcPayment({
       txHash,
       expected: {
-        destination: opts.destination,
-        amountUsdc: opts.amountUsdc,
-        memo: expectedMemo,
-        network: opts.network,
-        usdcIssuer: issuer,
+        destination: storedChallenge.destination,
+        amountUsdc: storedChallenge.amount,
+        memo: storedChallenge.memo,
+        network: storedChallenge.network,
+        usdcIssuer: storedChallenge.asset.issuer,
       },
       horizonUrl: opts.horizonUrl,
     });
@@ -126,6 +133,8 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
 
     // ─── Pago válido: marcar consumido + callback opcional ───────────
     cache.add(txHash);
+    challengeStore.consume(storedChallenge.memo);
+
     if (opts.onPaymentVerified) {
       try {
         await opts.onPaymentVerified({
