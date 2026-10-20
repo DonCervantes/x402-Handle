@@ -28,7 +28,7 @@ It combines x402 / MPP-style payment discovery, onchain activity signals, custom
 
 The current implementation uses `contract / source / intelligence` layers across `packages/*`, consumed by `apps/cli`, `apps/bff`, and `apps/frontend`.
 
-Stellar Public releases are gated by the [mainnet go-live checklist](docs/stellar-mainnet-go-live-checklist.md); the registry must not be deployed publicly until it has a signed go/no-go approval.
+Stellar Public releases are gated by the [mainnet go-live checklist](docs/stellar-mainnet-go-live-checklist.md); the registry must not be deployed publicly until it has a signed go/no-go approval. For registering or indexing an x402-compliant service with HANDLE, see the [Service Registration & Discovery Specification](docs/service-registration.md).
 
 ---
 

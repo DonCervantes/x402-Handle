@@ -2810011,5 +2810011,428 @@
     "resource": "https://agents.freederia.com/v1/posts/614983",
     "type": "http",
     "x402Version": 2
+  },
+  {
+    "accepts": [
+      {
+        "amount": "10000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Real-time cryptocurrency price feed via x402 micropayment",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/price",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Real-time cryptocurrency price feed via x402 micropayment",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/price",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "10000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Real-time token price and market data by coin identifier",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/price/{coin}",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Real-time token price and market data by coin identifier",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/price/{coin}",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "50000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Agent and wallet portfolio balances and token holdings",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/portfolio",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Agent and wallet portfolio balances and token holdings",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/portfolio",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "100000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Latest market intelligence, arbitrage, and yield opportunities",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/opportunities/latest",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Latest market intelligence, arbitrage, and yield opportunities",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/opportunities/latest",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "50000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "x402 payment audit trail, verification stats, and settlement proofs",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/audit/x402",
+        "scheme": "exact"
+      }
+    ],
+    "description": "x402 payment audit trail, verification stats, and settlement proofs",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/audit/x402",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "10000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Verify settled x402 on-chain payment receipt and transaction hash",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/receipt/verify",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Verify settled x402 on-chain payment receipt and transaction hash",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "POST",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/receipt/verify",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "50000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Model Context Protocol (MCP) tool execution gateway",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/mcp/call",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Model Context Protocol (MCP) tool execution gateway",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "POST",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/mcp/call",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "250000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "Daily morning crypto market briefing and agent intelligence report",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/briefing/morning",
+        "scheme": "exact"
+      }
+    ],
+    "description": "Daily morning crypto market briefing and agent intelligence report",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/briefing/morning",
+    "type": "http",
+    "x402Version": 1
+  },
+  {
+    "accepts": [
+      {
+        "amount": "1000000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "description": "In-depth agentic market research report by topic",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 300,
+        "network": "base",
+        "payTo": "0x16717295184B30b2c34988e402C402C402c40201",
+        "resource": "https://x402.167-172-95-184.nip.io/research/{topic}",
+        "scheme": "exact"
+      }
+    ],
+    "description": "In-depth agentic market research report by topic",
+    "extensions": {
+      "bazaar": {
+        "info": {
+          "input": {
+            "method": "GET",
+            "type": "http"
+          },
+          "output": {
+            "type": "json"
+          }
+        }
+      },
+      "discovery": {
+        "manifest": "https://x402.167-172-95-184.nip.io/.well-known/x402",
+        "openapi": "https://x402.167-172-95-184.nip.io/openapi.json",
+        "llms": "https://x402.167-172-95-184.nip.io/llms.txt",
+        "mcp": "https://x402.167-172-95-184.nip.io/mcp/tools"
+      }
+    },
+    "lastUpdated": "2026-10-20T12:00:00.000Z",
+    "quality": {
+      "l30DaysTotalCalls": 18,
+      "l30DaysUniquePayers": 3,
+      "lastCalledAt": "2026-10-20T12:00:00.000Z"
+    },
+    "resource": "https://x402.167-172-95-184.nip.io/research/{topic}",
+    "type": "http",
+    "x402Version": 1
   }
 ]

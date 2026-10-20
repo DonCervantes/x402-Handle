@@ -108,6 +108,10 @@ export const LANDING_COPY = {
         q: "Can providers register without writing code?",
         a: "Provider registration happens against the Soroban registry contract. A guided registration UI is on the roadmap for after the hackathon submission.",
       },
+      {
+        q: "What format does HANDLE expect for service registration?",
+        a: "HANDLE indexes services via both HTTP x402 discovery endpoints (/.well-known/x402, /openapi.json, /llms.txt, /mcp/tools) with facilitators like Coinbase CDP, and on-chain registration in the Soroban registry contract. See docs/service-registration.md for the full specification.",
+      },
     ],
     footer: "HANDLE — built for the Stellar Community Fund hackathon, 100% testnet.",
     backToTop: "Back to top ↑",
@@ -218,6 +222,10 @@ export const LANDING_COPY = {
       {
         q: "¿Los proveedores pueden registrarse sin escribir código?",
         a: "El registro de proveedores se hace contra el contrato registry de Soroban. Una UI guiada de registro está en el roadmap para después de la entrega del hackathon.",
+      },
+      {
+        q: "¿Qué formato espera HANDLE para el registro de servicios?",
+        a: "HANDLE indexa servicios tanto a través de endpoints de descubrimiento HTTP x402 (/.well-known/x402, /openapi.json, /llms.txt, /mcp/tools) con facilitadores como Coinbase CDP, como mediante registro on-chain en el contrato de Soroban. Consultá docs/service-registration.md para ver la especificación completa.",
       },
     ],
     footer: "HANDLE — construido para el hackathon de Stellar Community Fund, 100% testnet.",
