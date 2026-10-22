@@ -11,6 +11,61 @@ require_env() {
   fi
 }
 
+# Validate that production deployments use production-specific secrets and
+# never fall back to develop or generic secrets. This prevents accidentally
+# deploying with the wrong credentials.
+validate_production_secrets() {
+  local branch="$1"
+  
+  if [ "$branch" != "main" ]; then
+    return 0
+  fi
+
+  # For main branch deployments, require branch-specific secrets.
+  # Generic or develop secrets must not be used as fallbacks.
+  local missing_secrets=()
+
+  # Check analytics database URL - main must have MAIN_BFF_ANALYTICS_DATABASE_URL
+  # if analytics is being used (we allow it to be entirely absent for both branches)
+  if [ -n "${BFF_ANALYTICS_DATABASE_URL:-}" ] || [ -n "${DEVELOP_BFF_ANALYTICS_DATABASE_URL:-}" ]; then
+    if [ -z "${MAIN_BFF_ANALYTICS_DATABASE_URL:-}" ]; then
+      missing_secrets+=("MAIN_BFF_ANALYTICS_DATABASE_URL")
+    fi
+  fi
+
+  # Check HitPay secrets - if any HitPay secret is set for develop or generic,
+  # main must have its own MAIN_HITPAY_* secrets
+  if [ -n "${HITPAY_API_KEY:-}" ] || [ -n "${DEVELOP_HITPAY_API_KEY:-}" ]; then
+    if [ -z "${MAIN_HITPAY_API_KEY:-}" ]; then
+      missing_secrets+=("MAIN_HITPAY_API_KEY")
+    fi
+  fi
+
+  if [ -n "${HITPAY_WEBHOOK_SALT:-}" ] || [ -n "${DEVELOP_HITPAY_WEBHOOK_SALT:-}" ]; then
+    if [ -z "${MAIN_HITPAY_WEBHOOK_SALT:-}" ]; then
+      missing_secrets+=("MAIN_HITPAY_WEBHOOK_SALT")
+    fi
+  fi
+
+  if [ -n "${HITPAY_MPP_ENDPOINT:-}" ] || [ -n "${DEVELOP_HITPAY_MPP_ENDPOINT:-}" ]; then
+    if [ -z "${MAIN_HITPAY_MPP_ENDPOINT:-}" ]; then
+      missing_secrets+=("MAIN_HITPAY_MPP_ENDPOINT")
+    fi
+  fi
+
+  if [ ${#missing_secrets[@]} -gt 0 ]; then
+    echo "ERROR: Production deployment to main branch is missing required secrets." >&2
+    echo "The following MAIN_* secrets must be set (cannot fall back to develop or generic secrets):" >&2
+    for secret in "${missing_secrets[@]}"; do
+      echo "  - ${secret}" >&2
+    done
+    echo "" >&2
+    echo "Production deployments must use production-specific secrets to prevent" >&2
+    echo "accidentally using develop credentials in production." >&2
+    exit 1
+  fi
+}
+
 print_optional_env_var() {
   local key="$1"
   local value="${2:-}"
@@ -88,6 +143,9 @@ case "$DEPLOY_BRANCH" in
     exit 1
     ;;
 esac
+
+# Validate that production secrets are properly configured
+validate_production_secrets "$DEPLOY_BRANCH"
 
 apps_root="$HOME/apps"
 stack_root="${apps_root}/lightsail-stack"
@@ -192,7 +250,7 @@ else
   main_x402_refresh_token="$(read_persisted_x402_refresh_token main)"
 fi
 
-main_analytics_url="${MAIN_BFF_ANALYTICS_DATABASE_URL:-${BFF_ANALYTICS_DATABASE_URL:-}}"
+main_analytics_url="${MAIN_BFF_ANALYTICS_DATABASE_URL:-}"
 develop_analytics_url="${DEVELOP_BFF_ANALYTICS_DATABASE_URL:-${BFF_ANALYTICS_DATABASE_URL:-}}"
 bedrock_region="${BFF_BEDROCK_REGION:-${AWS_REGION:-${AWS_DEFAULT_REGION:-}}}"
 
@@ -238,38 +296,6 @@ bedrock_region="${BFF_BEDROCK_REGION:-${AWS_REGION:-${AWS_DEFAULT_REGION:-}}}"
   print_optional_env_var DEVELOP_HITPAY_API_KEY "${DEVELOP_HITPAY_API_KEY:-}"
   print_optional_env_var DEVELOP_HITPAY_WEBHOOK_SALT "${DEVELOP_HITPAY_WEBHOOK_SALT:-}"
   print_optional_env_var DEVELOP_HITPAY_MPP_ENDPOINT "${DEVELOP_HITPAY_MPP_ENDPOINT:-}"
-
-  print_optional_env_var STRIPE_SECRET_KEY "${STRIPE_SECRET_KEY:-}"
-  print_optional_env_var MAIN_STRIPE_SECRET_KEY "${MAIN_STRIPE_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_STRIPE_SECRET_KEY "${DEVELOP_STRIPE_SECRET_KEY:-}"
-
-  print_optional_env_var MPPX_PRIVATE_KEY "${MPPX_PRIVATE_KEY:-}"
-  print_optional_env_var MAIN_MPPX_PRIVATE_KEY "${MAIN_MPPX_PRIVATE_KEY:-}"
-  print_optional_env_var DEVELOP_MPPX_PRIVATE_KEY "${DEVELOP_MPPX_PRIVATE_KEY:-}"
-
-  print_optional_env_var MAIN_MPP_SECRET_KEY "${MAIN_MPP_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_MPP_SECRET_KEY "${DEVELOP_MPP_SECRET_KEY:-}"
-
-  print_optional_env_var SOLANA_MPP_RECIPIENT "${SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var SOLANA_MPP_NETWORK "${SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var SOLANA_MPP_CURRENCY "${SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var SOLANA_MPP_SECRET_KEY "${SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var SOLANA_MPP_PAYER_PRIVATE_KEY "${SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var SOLANA_MPP_RPC_URL "${SOLANA_MPP_RPC_URL:-}"
-
-  print_optional_env_var MAIN_SOLANA_MPP_RECIPIENT "${MAIN_SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_NETWORK "${MAIN_SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_CURRENCY "${MAIN_SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_SECRET_KEY "${MAIN_SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY "${MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_RPC_URL "${MAIN_SOLANA_MPP_RPC_URL:-}"
-
-  print_optional_env_var DEVELOP_SOLANA_MPP_RECIPIENT "${DEVELOP_SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_NETWORK "${DEVELOP_SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_CURRENCY "${DEVELOP_SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_SECRET_KEY "${DEVELOP_SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY "${DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_RPC_URL "${DEVELOP_SOLANA_MPP_RPC_URL:-}"
 } > "$stack_env_file"
 
 chmod 600 "$stack_env_file"

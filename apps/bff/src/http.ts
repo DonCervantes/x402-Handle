@@ -39,6 +39,13 @@ import { handleShowcaseRoute, showcaseRoutes } from "./showcase";
 import { getStellarHealth } from "./data/stellar-health";
 import { runPlaygroundPayment } from "./data/stellar-playground";
 import {
+  type PlaygroundSecurityConfig,
+  PlaygroundRateLimiter,
+  extractClientIp,
+  resolvePlaygroundSecurityConfig,
+  validatePlaygroundApiKey,
+} from "./data/playground-security";
+import {
   getProviderIntelligence,
   getStatsOverview,
   getStellarProviderById,
@@ -121,8 +128,12 @@ export const createBffHandler = (
   llmService: BffLlmService | null = resolveBffLlmService(),
   runtimeMetadata: BffRuntimeMetadata = resolveBffRuntimeMetadata(),
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
+  playgroundSecurityConfig: PlaygroundSecurityConfig = resolvePlaygroundSecurityConfig(),
 ) => {
   let analyticsState: AnalyticsLoadState;
+  
+  // Initialize rate limiter for playground endpoint
+  const playgroundRateLimiter = new PlaygroundRateLimiter(playgroundSecurityConfig);
 
   // Attach request-cheap derived views (lightweight provider list + by-id lookup)
   // once, at the moment a data source becomes ready, so request handlers never
@@ -278,9 +289,61 @@ export const createBffHandler = (
       return cachedJson(await getStatsOverview());
     }
     if (request.method === "POST" && path === STELLAR_PLAYGROUND_PAY_PATH) {
+      // Security control 1: Kill-switch — fail closed if disabled
+      if (!playgroundSecurityConfig.enabled) {
+        return json(
+          {
+            error: "playground_disabled",
+            message:
+              "The playground pay endpoint is disabled. Set BFF_STELLAR_PLAYGROUND_ENABLED=true to enable it.",
+          },
+          { status: 403 },
+        );
+      }
+
+      // Security control 2: Fail closed if demo secret is missing
+      const agentSecret = process.env.DEMO_AGENT_SECRET?.trim();
+      if (!agentSecret) {
+        return json(
+          {
+            error: "playground_misconfigured",
+            message:
+              "Playground endpoint is enabled but DEMO_AGENT_SECRET is not configured. Cannot proceed.",
+          },
+          { status: 503 },
+        );
+      }
+
+      // Security control 3: API key authentication
+      if (!validatePlaygroundApiKey(request, playgroundSecurityConfig.apiKey)) {
+        return json(
+          {
+            error: "unauthorized",
+            message: "Invalid or missing API key. Include a valid key in Authorization or X-API-Key header.",
+          },
+          { status: 401 },
+        );
+      }
+
+      // Security control 4: Per-IP rate limiting
+      const clientIp = extractClientIp(request);
+      const rateLimitError = playgroundRateLimiter.checkRateLimit(clientIp);
+      if (rateLimitError) {
+        return json(
+          {
+            error: "rate_limit_exceeded",
+            message: rateLimitError,
+            clientIp,
+          },
+          { status: 429 },
+        );
+      }
+
+      // Validate request body
       const body = await request.json().catch(() => null);
       const providerId = typeof body?.providerId === "string" ? body.providerId : null;
       if (!providerId) return badRequest("Body debe incluir { providerId: string }.");
+
       // El pago real toma varios segundos (submit + confirmación en Horizon).
       server?.timeout(request, 0);
       const result = await runPlaygroundPayment(providerId);
