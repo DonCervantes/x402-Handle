@@ -14,6 +14,8 @@
 
 ---
 
+> **Status (2026-10-18):** `main` is still at `db48be7` (2026-08-30, merge of PR #48). The audit fixes tracked in issues #71–#97 are **not** in `main` yet. Those issues were closed as completed prematurely; each is only complete once its implementation PR is merged to `main`. See the tracking table below for the PR that must be merged (or closed with a written reason) per issue.
+
 ## 🚀 What is Flovia?
 
 **Flovia** explores the emerging **agentic payments** layer: HTTP-native payment flows where agents, apps, and services can discover a paid resource, receive payment requirements, satisfy them programmatically, and continue without manual signup or API-key provisioning.
@@ -29,6 +31,43 @@ It combines x402 / MPP-style payment discovery, onchain activity signals, custom
 The current implementation uses `contract / source / intelligence` layers across `packages/*`, consumed by `apps/cli`, `apps/bff`, and `apps/frontend`.
 
 Stellar Public releases are gated by the [mainnet go-live checklist](docs/stellar-mainnet-go-live-checklist.md); the registry must not be deployed publicly until it has a signed go/no-go approval.
+
+---
+
+## 📋 Audit fix tracking
+
+Each row below maps a prematurely-closed audit issue to the open PR that carries its implementation. An issue is marked completed only after that PR is merged to `main`. Where a third column lists duplicate PRs, exactly one PR is chosen and the rest are closed with a written reason.
+
+| Closed completed | Keep this open PR | Also open, do not merge both |
+| --- | --- | --- |
+| #71 | #98 | |
+| #72 | #107 | |
+| #73 | #127 | #120, #70 |
+| #74 | #131 | #114 |
+| #75 | #129 | #65 |
+| #76 | #130 | #63 |
+| #77 | #61 | |
+| #78 | #57 | |
+| #79 | #64 | |
+| #80 | #128 | #53 |
+| #81 | #67 | #54 |
+| #82 | #60 | |
+| #84 | #125 | |
+| #85 | #126 | #56 |
+| #86 | #110 | |
+| #87 | #62 | #55 |
+| #88 | none | see the new TTL issue |
+| #89 | #108 | #68 |
+| #90 | #101 | #52 |
+| #91 | #115 | #51 |
+| #92 | #69 | |
+| #93 | #109 | #49 |
+| #94 | #106 | #50 |
+| #95 | #124 | #105, #45 |
+| #96 | #113 | #46 |
+| #97 | none | #103 claims to close the whole epic; it is not a substitute for the rows above |
+
+Still open and still accurate, so they are not replaced here: #2, #3, #6, #7, #8, #83.
 
 ---
 
@@ -127,6 +166,8 @@ Flovia currently treats Solana as a signal direction for onchain payment intelli
 | `packages/intelligence/` | Join logic, ranking, customer intelligence, and projection helpers                                |
 
 The CLI generates market snapshots and customer intelligence by combining CDP x402 Discovery and Bitquery. The BFF serves saved read models as a read-only API, and the frontend renders those projections as a Next.js UI.
+
+> **Note:** The architecture above describes the intended layout. Until the audit-fix PRs in the tracking table are merged, `main` at `db48be7` does not contain those fixes.
 
 ---
 
