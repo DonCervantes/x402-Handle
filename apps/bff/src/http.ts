@@ -39,6 +39,10 @@ import { handleShowcaseRoute, showcaseRoutes } from "./showcase";
 import { getStellarHealth } from "./data/stellar-health";
 import { runPlaygroundPayment } from "./data/stellar-playground";
 import {
+  checkPlaygroundPaymentSecurity,
+  createPlaygroundRateLimiter,
+} from "./data/playground-security";
+import {
   getProviderIntelligence,
   getStatsOverview,
   getStellarProviderById,
@@ -48,6 +52,7 @@ import {
 
 type RequestTimeoutController = {
   timeout(request: Request, seconds: number): void;
+  requestIP?(request: Request): { address: string } | null;
 };
 type RuntimeEnv = NodeJS.ProcessEnv;
 export type BffRuntimeMetadata = {
@@ -123,6 +128,7 @@ export const createBffHandler = (
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
 ) => {
   let analyticsState: AnalyticsLoadState;
+  const playgroundRateLimit = createPlaygroundRateLimiter();
 
   // Attach request-cheap derived views (lightweight provider list + by-id lookup)
   // once, at the moment a data source becomes ready, so request handlers never
@@ -278,6 +284,14 @@ export const createBffHandler = (
       return cachedJson(await getStatsOverview());
     }
     if (request.method === "POST" && path === STELLAR_PLAYGROUND_PAY_PATH) {
+      const remoteAddress = server?.requestIP?.(request)?.address;
+      const securityResponse = checkPlaygroundPaymentSecurity(
+        request,
+        remoteAddress,
+        playgroundRateLimit,
+      );
+      if (securityResponse) return securityResponse;
+
       const body = await request.json().catch(() => null);
       const providerId = typeof body?.providerId === "string" ? body.providerId : null;
       if (!providerId) return badRequest("Body debe incluir { providerId: string }.");

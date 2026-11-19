@@ -25,9 +25,18 @@ bun run verify
 - `GET /analytics/services/coingecko/summary` -> coingecko macro service analytics summary
 - `GET /analytics/services/comparison` -> coingecko and public x402 peer service comparison
 - `GET /analytics/services/quadrants` -> quadrant-ready service comparison data using average transactions per user vs endpoint diversity
+- `POST /stellar/playground/pay` -> server-side demo payment; disabled unless explicitly enabled
 
 The demo endpoint responses follow `docs/phase-b/api-contract.md` and the Phase B schema in `packages/contracts`.
 Demo labels and expected future SDK telemetry fields are distinguished by `provenance` / `provenanceByField` / `reasons` in responses.
+
+The Stellar playground payment endpoint is disabled by default, including in
+production. To enable it, set `BFF_STELLAR_PLAYGROUND_ENABLED=true`,
+`BFF_STELLAR_PLAYGROUND_API_KEY` to a strong secret, and `DEMO_AGENT_SECRET`.
+Requests must provide the API key as a bearer token or `X-API-Key`. The endpoint
+allows 10 authenticated requests per client IP per UTC day by default;
+`BFF_PLAYGROUND_MAX_REQUESTS_PER_DAY` can set a different positive limit. The
+limiter is in-memory and therefore applies per BFF process.
 
 The following endpoints are not exposed in the initial Phase B implementation.
 
@@ -49,4 +58,5 @@ The policy is not to issue live CDP / Bitquery / RPC / SDK collector calls per u
 
 ## Read-only policy
 
-Demo endpoints accept GET only. Non-GET methods do not perform write operations and return an error response aligned with the read-only policy.
+Read endpoints accept GET only. The Stellar playground payment endpoint is the
+only route that performs a payment and requires the explicit safeguards above.
