@@ -4,7 +4,7 @@
 
 ## Idea
 
-Un endpoint protegido devuelve `402 Payment Required` con un challenge (destino, monto, memo). El cliente firma una transacción USDC en Stellar, la submitea, y reintenta el request con el header `X-PAYMENT: <tx_hash>`. El middleware verifica el pago en Horizon y sirve el recurso.
+Un endpoint protegido devuelve `402 Payment Required` con un challenge (destino, monto, memo). El cliente firma una transacción USDC en Stellar, la submitea, y reintenta el request con el header `X-PAYMENT: <tx_hash>;memo=<memo>`. El middleware sólo acepta memos emitidos y aún almacenados por el servidor; no admite el memo en la query string. Los memos desconocidos reciben otro `402 Payment Required`.
 
 ## Estructura
 
