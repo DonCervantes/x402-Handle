@@ -239,37 +239,10 @@ bedrock_region="${BFF_BEDROCK_REGION:-${AWS_REGION:-${AWS_DEFAULT_REGION:-}}}"
   print_optional_env_var DEVELOP_HITPAY_WEBHOOK_SALT "${DEVELOP_HITPAY_WEBHOOK_SALT:-}"
   print_optional_env_var DEVELOP_HITPAY_MPP_ENDPOINT "${DEVELOP_HITPAY_MPP_ENDPOINT:-}"
 
-  print_optional_env_var STRIPE_SECRET_KEY "${STRIPE_SECRET_KEY:-}"
-  print_optional_env_var MAIN_STRIPE_SECRET_KEY "${MAIN_STRIPE_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_STRIPE_SECRET_KEY "${DEVELOP_STRIPE_SECRET_KEY:-}"
-
-  print_optional_env_var MPPX_PRIVATE_KEY "${MPPX_PRIVATE_KEY:-}"
-  print_optional_env_var MAIN_MPPX_PRIVATE_KEY "${MAIN_MPPX_PRIVATE_KEY:-}"
-  print_optional_env_var DEVELOP_MPPX_PRIVATE_KEY "${DEVELOP_MPPX_PRIVATE_KEY:-}"
-
-  print_optional_env_var MAIN_MPP_SECRET_KEY "${MAIN_MPP_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_MPP_SECRET_KEY "${DEVELOP_MPP_SECRET_KEY:-}"
-
-  print_optional_env_var SOLANA_MPP_RECIPIENT "${SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var SOLANA_MPP_NETWORK "${SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var SOLANA_MPP_CURRENCY "${SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var SOLANA_MPP_SECRET_KEY "${SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var SOLANA_MPP_PAYER_PRIVATE_KEY "${SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var SOLANA_MPP_RPC_URL "${SOLANA_MPP_RPC_URL:-}"
-
-  print_optional_env_var MAIN_SOLANA_MPP_RECIPIENT "${MAIN_SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_NETWORK "${MAIN_SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_CURRENCY "${MAIN_SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_SECRET_KEY "${MAIN_SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY "${MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var MAIN_SOLANA_MPP_RPC_URL "${MAIN_SOLANA_MPP_RPC_URL:-}"
-
-  print_optional_env_var DEVELOP_SOLANA_MPP_RECIPIENT "${DEVELOP_SOLANA_MPP_RECIPIENT:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_NETWORK "${DEVELOP_SOLANA_MPP_NETWORK:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_CURRENCY "${DEVELOP_SOLANA_MPP_CURRENCY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_SECRET_KEY "${DEVELOP_SOLANA_MPP_SECRET_KEY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY "${DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY:-}"
-  print_optional_env_var DEVELOP_SOLANA_MPP_RPC_URL "${DEVELOP_SOLANA_MPP_RPC_URL:-}"
+  # #155: Solana MPP and Stripe/Tempo MPP secrets are removed from the
+  # Lightsail path. Those showcase routes are gated by SHOWCASE_MPP_ENABLED
+  # (default false) in the compose file, so no secret env is exported here.
+  print_optional_env_var SHOWCASE_MPP_ENABLED "${SHOWCASE_MPP_ENABLED:-false}"
 } > "$stack_env_file"
 
 chmod 600 "$stack_env_file"

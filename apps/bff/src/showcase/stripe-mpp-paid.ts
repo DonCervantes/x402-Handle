@@ -134,6 +134,10 @@ const createPayToAddress = async (request: Request, client: Stripe) => {
 
 export const handleStripeMppPaidShowcase = (request: Request) =>
   flovia.trackPaidApi(request, {
+  if ((process.env.SHOWCASE_MPP_ENABLED ?? "false").toLowerCase() !== "true") {
+    return json({ error: "showcase_disabled" }, { status: 404 });
+  }
+
     provider,
     rail,
     endpoint,
@@ -237,6 +241,10 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
   });
 
 export const handleStripeMppPayShowcase = async (request: Request) => {
+  if ((process.env.SHOWCASE_MPP_ENABLED ?? "false").toLowerCase() !== "true") {
+    return json({ error: "showcase_disabled" }, { status: 404 });
+  }
+
   if (request.method !== "POST" || request.headers.get("x-flovia-showcase-pay") !== "stripe-mpp") {
     return json(
       {

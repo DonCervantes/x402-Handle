@@ -217,65 +217,8 @@ describe("lightsail shared stack", () => {
     );
   });
 
-  test("deployment passes common Stripe secret to stack sync", () => {
-    const workflow = read("../../.github/workflows/deploy-lightsail-shared.yml");
-    const syncScript = read("./lightsail-sync-stack.sh");
-
-    expect(workflow).toContain("STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}");
-    expect(workflow).toContain("MAIN_STRIPE_SECRET_KEY: ${{ secrets.MAIN_STRIPE_SECRET_KEY }}");
-    expect(workflow).toContain('stripe_secret_key_b64="$(encode_env STRIPE_SECRET_KEY)"');
-    expect(workflow).toContain('main_stripe_secret_key_b64="$(encode_env MAIN_STRIPE_SECRET_KEY)"');
-    expect(workflow).toContain('STRIPE_SECRET_KEY_B64="${stripe_secret_key_b64}"');
-    expect(workflow).toContain('MAIN_STRIPE_SECRET_KEY_B64="${main_stripe_secret_key_b64}"');
-    expect(workflow).toContain("decode_env STRIPE_SECRET_KEY_B64 STRIPE_SECRET_KEY");
-    expect(workflow).toContain("decode_env MAIN_STRIPE_SECRET_KEY_B64 MAIN_STRIPE_SECRET_KEY");
-    expect(syncScript).toContain(
-      'print_optional_env_var STRIPE_SECRET_KEY "${STRIPE_SECRET_KEY:-}"',
-    );
-  });
-
-  test("deployment sync writes shared and branch-scoped payment secrets", () => {
-    const syncScript = read("./lightsail-sync-stack.sh");
-
-    expect(syncScript).toContain('print_optional_env_var HITPAY_API_KEY "${HITPAY_API_KEY:-}"');
-    expect(syncScript).toContain(
-      'print_optional_env_var HITPAY_WEBHOOK_SALT "${HITPAY_WEBHOOK_SALT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var HITPAY_MPP_ENDPOINT "${HITPAY_MPP_ENDPOINT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var MAIN_HITPAY_API_KEY "${MAIN_HITPAY_API_KEY:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var MAIN_HITPAY_WEBHOOK_SALT "${MAIN_HITPAY_WEBHOOK_SALT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var MAIN_HITPAY_MPP_ENDPOINT "${MAIN_HITPAY_MPP_ENDPOINT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_HITPAY_API_KEY "${DEVELOP_HITPAY_API_KEY:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_HITPAY_WEBHOOK_SALT "${DEVELOP_HITPAY_WEBHOOK_SALT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_HITPAY_MPP_ENDPOINT "${DEVELOP_HITPAY_MPP_ENDPOINT:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var MAIN_STRIPE_SECRET_KEY "${MAIN_STRIPE_SECRET_KEY:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_STRIPE_SECRET_KEY "${DEVELOP_STRIPE_SECRET_KEY:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_MPPX_PRIVATE_KEY "${DEVELOP_MPPX_PRIVATE_KEY:-}"',
-    );
-    expect(syncScript).toContain(
-      'print_optional_env_var DEVELOP_MPP_SECRET_KEY "${DEVELOP_MPP_SECRET_KEY:-}"',
-    );
-  });
-
+  
+  
   test("deployment auto-generates the x402 refresh token and passes it to stack sync", () => {
     const workflow = read("../../.github/workflows/deploy-lightsail-shared.yml");
 
@@ -362,4 +305,57 @@ describe("lightsail shared stack", () => {
       'provision_x402_refresh_cron develop "$develop_x402_refresh_token"',
     );
   });
+
+test("#155: Lightsail path carries no Solana/Stripe MPP secrets", () => {
+  const workflow = read("../../.github/workflows/deploy-lightsail-shared.yml");
+  const compose = read("../../docker-compose.lightsail.yml");
+  const syncScript = read("./lightsail-sync-stack.sh");
+
+  const removed = [
+    "SOLANA_MPP_RECIPIENT",
+    "SOLANA_MPP_NETWORK",
+    "SOLANA_MPP_CURRENCY",
+    "SOLANA_MPP_SECRET_KEY",
+    "SOLANA_MPP_PAYER_PRIVATE_KEY",
+    "SOLANA_MPP_RPC_URL",
+    "MAIN_SOLANA_MPP_RECIPIENT",
+    "MAIN_SOLANA_MPP_NETWORK",
+    "MAIN_SOLANA_MPP_CURRENCY",
+    "MAIN_SOLANA_MPP_SECRET_KEY",
+    "MAIN_SOLANA_MPP_PAYER_PRIVATE_KEY",
+    "MAIN_SOLANA_MPP_RPC_URL",
+    "DEVELOP_SOLANA_MPP_RECIPIENT",
+    "DEVELOP_SOLANA_MPP_NETWORK",
+    "DEVELOP_SOLANA_MPP_CURRENCY",
+    "DEVELOP_SOLANA_MPP_SECRET_KEY",
+    "DEVELOP_SOLANA_MPP_PAYER_PRIVATE_KEY",
+    "DEVELOP_SOLANA_MPP_RPC_URL",
+    "DEVELOP_STRIPE_SECRET_KEY",
+    "DEVELOP_MPPX_PRIVATE_KEY",
+    "DEVELOP_MPP_SECRET_KEY",
+  ];
+  for (const name of removed) {
+    expect(workflow.includes(name + ": ${{")).toBe(false);
+    expect(compose.includes(name + ":")).toBe(false);
+    expect(syncScript.includes(name)).toBe(false);
+  }
+
+  // The showcase routes are still gated, default off, in both branches.
+  expect(compose).toContain("SHOWCASE_MPP_ENABLED: ${MAIN_SHOWCASE_MPP_ENABLED:-false}");
+  expect(compose).toContain("SHOWCASE_MPP_ENABLED: ${DEVELOP_SHOWCASE_MPP_ENABLED:-false}");
+  expect(syncScript).toContain(
+    'print_optional_env_var SHOWCASE_MPP_ENABLED "${SHOWCASE_MPP_ENABLED:-false}"',
+  );
+});
+
+test("#155: missing required production secrets fail closed (no DEVELOP_* fallback)", () => {
+  const syncScript = read("./lightsail-sync-stack.sh");
+  // require_env aborts on a missing env var; verify the three that stay
+  // required are declared.
+  for (const name of ["DEPLOY_BRANCH", "DEPLOY_GIT_SHA", "BFF_IMAGE_REPOSITORY"]) {
+    expect(syncScript).toContain(`require_env ${name}`);
+  }
+  // No fallback wiring for the removed MPP secrets remains.
+  expect(syncScript).not.toMatch(/DEVELOP_(STRIPE|MPPX|MPP)_/);
+});
 });
