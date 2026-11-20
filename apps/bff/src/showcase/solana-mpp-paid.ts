@@ -91,6 +91,10 @@ const resolveSolanaMppx = (network: SolanaNetwork) => {
 
 export const handleSolanaMppPaidShowcase = (request: Request) =>
   flovia.trackPaidApi(request, {
+  if ((process.env.SHOWCASE_MPP_ENABLED ?? "false").toLowerCase() !== "true") {
+    return json({ error: "showcase_disabled" }, { status: 404 });
+  }
+
     provider,
     rail,
     endpoint,
@@ -303,6 +307,10 @@ async function resolveSolanaPayerSigner() {
 }
 
 export const handleSolanaMppPayShowcase = async (request: Request) => {
+  if ((process.env.SHOWCASE_MPP_ENABLED ?? "false").toLowerCase() !== "true") {
+    return json({ error: "showcase_disabled" }, { status: 404 });
+  }
+
   if (
     request.method !== "POST" ||
     request.headers.get(PAY_CONFIRMATION_HEADER) !== PAY_CONFIRMATION_VALUE
