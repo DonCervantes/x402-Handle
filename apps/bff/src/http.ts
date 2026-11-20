@@ -116,6 +116,23 @@ export const resolveBffRuntimeMetadata = (
   startedAt: now.toISOString(),
 });
 
+const jsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+const stampFixtureProvenance = (body: unknown, status: number): Response => {
+  const isObj = typeof body === "object" && body !== null && !Array.isArray(body);
+  const merged = isObj
+    ? { ...(body as Record<string, unknown>), provenance: "fixture" as const }
+    : body;
+  return new Response(JSON.stringify(merged), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+};
+
 export const createBffHandler = (
   dataSource: BffAnalyticsDataSource | Promise<BffAnalyticsDataSource> | undefined = undefined,
   llmService: BffLlmService | null = resolveBffLlmService(),
@@ -186,6 +203,18 @@ export const createBffHandler = (
   void preloadAnalytics();
 
   const getReadyDataSource = () => {
+    if (analyticsState.status === "unavailable") {
+      return jsonResponse(
+        {
+          error: {
+            code: "analytics_unavailable",
+            message: "Analytics source is unavailable in production.",
+          },
+        },
+        503,
+      );
+    }
+
     if (analyticsState.status === "ready" || analyticsState.status === "fallback") {
       return analyticsState.dataSource;
     }
