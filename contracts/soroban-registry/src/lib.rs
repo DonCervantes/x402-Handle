@@ -74,6 +74,21 @@ enum DataKey {
     TxConsumed(BytesN<32>),
 }
 
+// ───────────────────────────── TTL
+//
+// Persistent entries (Provider, Payment, TxConsumed) are extended on every
+// write to `PERSISTENT_TTL_LEDGERS` ledgers (~30 days at 5s/ledger).
+// Instance storage (Admin, counters) is extended on initialize and on every
+// mutating call to `INSTANCE_TTL_LEDGERS` (~30 days at 5s/ledger).
+//
+// If a persistent TTL is missed, the entry is evicted and reads return
+// NotFound: a provider disappears from the catalog, or a TxConsumed marker
+// is lost and the same tx_hash can be logged again. If the instance TTL is
+// missed, the whole contract state (admin + counters) is evicted and the
+// contract must be re-initialized. See RUNBOOK.md for recovery steps.
+const PERSISTENT_TTL_LEDGERS: u32 = 518_400; // ~30 days @ 5s/ledger
+const INSTANCE_TTL_LEDGERS: u32 = 518_400;   // ~30 days @ 5s/ledger
+
 // ───────────────────────────── Contract
 
 #[contract]
@@ -90,6 +105,7 @@ impl FloviaRegistry {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
     }
 
     pub fn admin(env: Env) -> Address {
@@ -142,7 +158,9 @@ impl FloviaRegistry {
         };
 
         env.storage().persistent().set(&DataKey::Provider(counter), &provider);
+        env.storage().persistent().extend_ttl(&DataKey::Provider(counter), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
         env.storage().instance().set(&DataKey::ProviderCounter, &counter);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_reg"), counter),
@@ -174,6 +192,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().extend_ttl(&DataKey::Provider(provider_id), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_upd"), provider_id),
@@ -195,6 +215,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().extend_ttl(&DataKey::Provider(provider_id), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_off"), provider_id),
@@ -216,6 +238,8 @@ impl FloviaRegistry {
         p.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage().persistent().extend_ttl(&DataKey::Provider(provider_id), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("prov_on"), provider_id),
@@ -302,8 +326,12 @@ impl FloviaRegistry {
         };
 
         env.storage().persistent().set(&DataKey::Payment(counter), &log);
+        env.storage().persistent().extend_ttl(&DataKey::Payment(counter), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
         env.storage().persistent().set(&consumed_key, &true);
+        env.storage().persistent().extend_ttl(&consumed_key, PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
+        env.storage().persistent().extend_ttl(&DataKey::Provider(provider_id), PERSISTENT_TTL_LEDGERS, PERSISTENT_TTL_LEDGERS);
         env.storage().instance().set(&DataKey::PaymentCounter, &counter);
+        env.storage().instance().extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
 
         env.events().publish(
             (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
@@ -514,5 +542,35 @@ mod test {
         );
         let p = client.get_provider(&id);
         assert_eq!(p.created_at, 1_700_000_000);
+    }
+
+    #[test]
+    fn persistent_ttl_extended_on_writes() {
+        let (env, client, _) = setup();
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[0u8; 32]);
+        let id = client.register_provider(
+            &owner,
+            &String::from_str(&env, "X"),
+            &String::from_str(&env, "https://x.io"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
+        let tx_hash = BytesN::from_array(&env, &[3u8; 32]);
+        client.log_payment(&id, &payer, &1u64, &tx_hash);
+
+        // Advance past the default TTL; entries must still be readable
+        // because writes extended them to PERSISTENT_TTL_LEDGERS.
+        env.ledger().with_mut(|li| li.sequence_number += 100_000);
+        assert_eq!(client.get_provider(&id).id, id);
+        assert_eq!(client.get_payment(&1).id, 1);
+
+        // Duplicate still rejected: TxConsumed survived.
+        let result = client.try_log_payment(&id, &payer, &1u64, &tx_hash);
+        assert!(result.is_err());
     }
 }
