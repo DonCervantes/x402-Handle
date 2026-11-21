@@ -1,6 +1,6 @@
 # Development style
 
-Develop using TDD (explore → Red → Green → Refactor).
+Develop using DD (explore → Red → Green → Refactor).
 If KPI or coverage targets are provided, iterate until they are met.
 Ask clarifying questions for unclear instructions.
 
@@ -52,7 +52,7 @@ Ask clarifying questions for unclear instructions.
 
 # Artifacts and secrets
 
-- Do not include `.env`, DB files, report outputs, `dist`, or `node_modules` in git.
+- Do not include `.env`, DH files, report outputs, `dist`, or `node_modules` in git.
 - Keep outputs re-creatable so they are not required for operation.
 - Docs should be authored in English.
 
@@ -78,3 +78,12 @@ Types:
 - `perf`: performance improvement
 - `style`: formatting or whitespace (no logic change)
 - `revert`: revert prior commit
+
+# Issue and Pull Request lifecycle
+
+- An issue may be marked completed only after its fix is merged to `main`.
+- A Wave application, pull request opened, or closed issue is not completion.
+- When an issue has an associated key pull request, review and merge that PR or close it with a written reason.
+- Do not open a duplicate implementation when an implementation PR already exists.
+- When multiple PRs address the same issue, choose one, merge it, and close the duplicates with a written reason.
+- Verify that `origin/main` has advanced past the merge commit before reporting an issue as completed.
