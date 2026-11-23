@@ -16,8 +16,8 @@
 //!   ("registry", "payment_logged", provider_id)    data = PaymentLog
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, panic_with_error,
-    symbol_short, vec, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, vec,
+    Address, BytesN, Env, String, Symbol, Vec,
 };
 
 // ───────────────────────────── Errors
@@ -26,12 +26,12 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
-    NotInitialized       = 1,
-    AlreadyInitialized   = 2,
-    Unauthorized         = 3,
-    NotFound             = 4,
+    NotInitialized = 1,
+    AlreadyInitialized = 2,
+    Unauthorized = 3,
+    NotFound = 4,
     PaymentAlreadyLogged = 5,
-    InvalidArgument      = 6,
+    InvalidArgument = 6,
 }
 
 // ───────────────────────────── Types
@@ -39,28 +39,28 @@ pub enum Error {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Provider {
-    pub id:             u64,
-    pub owner:          Address,
-    pub name:           String,
-    pub endpoint:       String,
-    pub price_stroops:  u64,     // precio por call, en stroops de USDC
-    pub payment_token:  Address, // contrato del activo (USDC)
-    pub metadata_hash:  BytesN<32>,
-    pub category:       Symbol,
-    pub created_at:     u64,
-    pub updated_at:     u64,
-    pub active:         bool,
+    pub id: u64,
+    pub owner: Address,
+    pub name: String,
+    pub endpoint: String,
+    pub price_stroops: u64,     // precio por call, en stroops de USDC
+    pub payment_token: Address, // contrato del activo (USDC)
+    pub metadata_hash: BytesN<32>,
+    pub category: Symbol,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub active: bool,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PaymentLog {
-    pub id:           u64,
-    pub provider_id:  u64,
-    pub payer:        Address,
-    pub amount:       u64,         // stroops
-    pub tx_hash:      BytesN<32>,
-    pub timestamp:    u64,
+    pub id: u64,
+    pub provider_id: u64,
+    pub payer: Address,
+    pub amount: u64, // stroops
+    pub tx_hash: BytesN<32>,
+    pub timestamp: u64,
 }
 
 #[contracttype]
@@ -88,8 +88,12 @@ impl FloviaRegistry {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::ProviderCounter, &0u64);
-        env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProviderCounter, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::PaymentCounter, &0u64);
     }
 
     pub fn admin(env: Env) -> Address {
@@ -141,11 +145,19 @@ impl FloviaRegistry {
             active: true,
         };
 
-        env.storage().persistent().set(&DataKey::Provider(counter), &provider);
-        env.storage().instance().set(&DataKey::ProviderCounter, &counter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(counter), &provider);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProviderCounter, &counter);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("prov_reg"), counter),
+            (
+                symbol_short!("registry"),
+                symbol_short!("prov_reg"),
+                counter,
+            ),
             provider.clone(),
         );
 
@@ -173,10 +185,16 @@ impl FloviaRegistry {
         p.metadata_hash = metadata_hash;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("prov_upd"), provider_id),
+            (
+                symbol_short!("registry"),
+                symbol_short!("prov_upd"),
+                provider_id,
+            ),
             p,
         );
     }
@@ -194,10 +212,16 @@ impl FloviaRegistry {
         p.active = false;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("prov_off"), provider_id),
+            (
+                symbol_short!("registry"),
+                symbol_short!("prov_off"),
+                provider_id,
+            ),
             (),
         );
     }
@@ -215,10 +239,16 @@ impl FloviaRegistry {
         p.active = true;
         p.updated_at = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Provider(provider_id), &p);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Provider(provider_id), &p);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("prov_on"), provider_id),
+            (
+                symbol_short!("registry"),
+                symbol_short!("prov_on"),
+                provider_id,
+            ),
             (),
         );
     }
@@ -301,12 +331,20 @@ impl FloviaRegistry {
             timestamp: env.ledger().timestamp(),
         };
 
-        env.storage().persistent().set(&DataKey::Payment(counter), &log);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Payment(counter), &log);
         env.storage().persistent().set(&consumed_key, &true);
-        env.storage().instance().set(&DataKey::PaymentCounter, &counter);
+        env.storage()
+            .instance()
+            .set(&DataKey::PaymentCounter, &counter);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("pay_log"), provider_id),
+            (
+                symbol_short!("registry"),
+                symbol_short!("pay_log"),
+                provider_id,
+            ),
             log.clone(),
         );
 
@@ -332,12 +370,7 @@ impl FloviaRegistry {
 
     /// Lista pagos en rango [from_id, to_id] filtrados por provider_id.
     /// Para uso del indexer / análisis off-chain.
-    pub fn list_payments(
-        env: Env,
-        provider_id: u64,
-        from_id: u64,
-        to_id: u64,
-    ) -> Vec<PaymentLog> {
+    pub fn list_payments(env: Env, provider_id: u64, from_id: u64, to_id: u64) -> Vec<PaymentLog> {
         if from_id == 0 || to_id < from_id {
             panic_with_error!(&env, Error::InvalidArgument);
         }
@@ -364,25 +397,55 @@ impl FloviaRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, testutils::Ledger, BytesN, Env, String, Symbol};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
+        BytesN, Env, IntoVal, String, Symbol, Val,
+    };
 
-    fn setup() -> (Env, FloviaRegistryClient<'static>, Address) {
+    fn setup() -> (Env, FloviaRegistryClient<'static>, Address, Address) {
         let env = Env::default();
-        env.mock_all_auths();
         let admin = Address::generate(&env);
         let contract_id = env.register_contract(None, FloviaRegistry);
         let client = FloviaRegistryClient::new(&env, &contract_id);
         client.initialize(&admin);
-        (env, client, admin)
+        (env, client, admin, contract_id)
+    }
+
+    fn authorize(env: &Env, contract: &Address, signer: &Address, fn_name: &str, args: Vec<Val>) {
+        env.mock_auths(&[MockAuth {
+            address: signer,
+            invoke: &MockAuthInvoke {
+                contract,
+                fn_name,
+                args,
+                sub_invokes: &[],
+            },
+        }]);
     }
 
     #[test]
     fn registers_and_reads_provider() {
-        let (env, client, _admin) = setup();
+        let (env, client, _admin, contract_id) = setup();
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[1u8; 32]);
 
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "FX Rates Oracle"),
+                String::from_str(&env, "https://fx.example.com/rate"),
+                50_000u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "fx"),
+            )
+                .into_val(&env),
+        );
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "FX Rates Oracle"),
@@ -402,10 +465,26 @@ mod test {
 
     #[test]
     fn updates_provider() {
-        let (env, client, _) = setup();
+        let (env, client, _, contract_id) = setup();
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "X"),
+                String::from_str(&env, "https://x.io"),
+                10u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "data"),
+            )
+                .into_val(&env),
+        );
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -417,6 +496,19 @@ mod test {
         );
 
         let new_meta = BytesN::from_array(&env, &[9u8; 32]);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "update_provider",
+            (
+                id,
+                20u64,
+                String::from_str(&env, "https://x.io/v2"),
+                new_meta.clone(),
+            )
+                .into_val(&env),
+        );
         client.update_provider(
             &id,
             &20u64,
@@ -430,10 +522,26 @@ mod test {
 
     #[test]
     fn deactivates_and_activates() {
-        let (env, client, _) = setup();
+        let (env, client, _, contract_id) = setup();
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "X"),
+                String::from_str(&env, "https://x.io"),
+                10u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "data"),
+            )
+                .into_val(&env),
+        );
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -443,19 +551,49 @@ mod test {
             &meta,
             &Symbol::new(&env, "data"),
         );
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "deactivate",
+            (id,).into_val(&env),
+        );
         client.deactivate(&id);
         assert_eq!(client.get_provider(&id).active, false);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "activate",
+            (id,).into_val(&env),
+        );
         client.activate(&id);
         assert_eq!(client.get_provider(&id).active, true);
     }
 
     #[test]
     fn logs_payment_and_rejects_duplicate() {
-        let (env, client, _) = setup();
+        let (env, client, _, contract_id) = setup();
         let owner = Address::generate(&env);
         let payer = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "X"),
+                String::from_str(&env, "https://x.io"),
+                10u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "data"),
+            )
+                .into_val(&env),
+        );
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -477,11 +615,27 @@ mod test {
 
     #[test]
     fn lists_providers_in_range() {
-        let (env, client, _) = setup();
+        let (env, client, _, contract_id) = setup();
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
         for i in 0..5 {
             let owner = Address::generate(&env);
+            authorize(
+                &env,
+                &contract_id,
+                &owner,
+                "register_provider",
+                (
+                    owner.clone(),
+                    String::from_str(&env, "P"),
+                    String::from_str(&env, "https://p"),
+                    10 + i as u64,
+                    token.clone(),
+                    meta.clone(),
+                    Symbol::new(&env, "data"),
+                )
+                    .into_val(&env),
+            );
             let _ = client.register_provider(
                 &owner,
                 &String::from_str(&env, "P"),
@@ -498,11 +652,27 @@ mod test {
 
     #[test]
     fn ledger_timestamp_used() {
-        let (env, client, _) = setup();
+        let (env, client, _, contract_id) = setup();
         env.ledger().with_mut(|li| li.timestamp = 1_700_000_000);
         let owner = Address::generate(&env);
         let token = Address::generate(&env);
         let meta = BytesN::from_array(&env, &[0u8; 32]);
+        authorize(
+            &env,
+            &contract_id,
+            &owner,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "X"),
+                String::from_str(&env, "https://x.io"),
+                10u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "data"),
+            )
+                .into_val(&env),
+        );
         let id = client.register_provider(
             &owner,
             &String::from_str(&env, "X"),
@@ -514,5 +684,41 @@ mod test {
         );
         let p = client.get_provider(&id);
         assert_eq!(p.created_at, 1_700_000_000);
+    }
+
+    #[test]
+    #[should_panic]
+    fn rejects_register_without_owner_authorization() {
+        let (env, client, _, contract_id) = setup();
+        let owner = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        let token = Address::generate(&env);
+        let meta = BytesN::from_array(&env, &[3u8; 32]);
+
+        authorize(
+            &env,
+            &contract_id,
+            &attacker,
+            "register_provider",
+            (
+                owner.clone(),
+                String::from_str(&env, "unauthorized"),
+                String::from_str(&env, "https://x.io"),
+                10u64,
+                token.clone(),
+                meta.clone(),
+                Symbol::new(&env, "data"),
+            )
+                .into_val(&env),
+        );
+        let _ = client.register_provider(
+            &owner,
+            &String::from_str(&env, "unauthorized"),
+            &String::from_str(&env, "https://x.io"),
+            &10u64,
+            &token,
+            &meta,
+            &Symbol::new(&env, "data"),
+        );
     }
 }
