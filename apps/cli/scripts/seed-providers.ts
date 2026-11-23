@@ -19,8 +19,9 @@ import {
   scValToNative,
   hash,
 } from "@stellar/stellar-sdk";
+import { requireRegistryContractId } from "@flovia/x402-stellar";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
+const CONTRACT_ID = requireRegistryContractId();
 const OWNER_SECRET = process.env.DEMO_PROVIDER_SECRET;
 const SOROBAN_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const NETWORK_PASSPHRASE = Networks.TESTNET;
@@ -28,8 +29,8 @@ const NETWORK_PASSPHRASE = Networks.TESTNET;
 // placeholder demo (no se usa para mover fondos, sólo metadata on-chain).
 const PAYMENT_TOKEN_PLACEHOLDER = process.env.DEMO_PROVIDER_PUBLIC!;
 
-if (!CONTRACT_ID || !OWNER_SECRET) {
-  console.error("Missing REGISTRY_CONTRACT_ID or DEMO_PROVIDER_SECRET in .env");
+if (!OWNER_SECRET) {
+  console.error("Missing DEMO_PROVIDER_SECRET in .env");
   process.exit(1);
 }
 

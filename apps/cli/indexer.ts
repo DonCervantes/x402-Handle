@@ -9,12 +9,9 @@
  * Requiere en .env: REGISTRY_CONTRACT_ID, SOROBAN_RPC_URL, DATABASE_URL.
  */
 import { stellar } from "sources";
+import { requireRegistryContractId } from "@flovia/x402-stellar";
 
-const CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID;
-if (!CONTRACT_ID) {
-  console.error("Missing REGISTRY_CONTRACT_ID in .env");
-  process.exit(1);
-}
+const CONTRACT_ID = requireRegistryContractId();
 
 const POLL_LIMIT = 1000;
 
