@@ -3,6 +3,7 @@ export { x402Stellar } from "./server";
 export { x402Pay } from "./client";
 export { verifyUsdcPayment } from "./verify";
 export { createReplayCache, defaultReplayCache } from "./replay-cache";
+export { createChallengeStore, defaultChallengeStore } from "./challenge-store";
 export { logPaymentOnChain } from "./onchain-log";
 export { decideSponsorship } from "./sponsorship";
 export type {
@@ -23,4 +24,6 @@ export type {
   VerifyFailureReason,
 } from "./types";
 export type { ReplayCache } from "./replay-cache";
+export type { ChallengeStore, IssuedMemo } from "./challenge-store";
+export type { X402StellarMiddlewareOpts } from "./server";
 export type { X402PayOpts, X402PayResult } from "./client";
