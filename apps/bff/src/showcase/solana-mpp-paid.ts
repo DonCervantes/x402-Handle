@@ -8,8 +8,6 @@ const endpoint = "/showcase/solana-mpp/paid";
 const payEndpoint = "/showcase/solana-mpp/pay";
 const provider = "solana" as const;
 const rail = "mpp" as const;
-const PAY_CONFIRMATION_HEADER = "x-flovia-showcase-pay";
-const PAY_CONFIRMATION_VALUE = "solana-mpp";
 
 // Display amount (UI/Flovia event metadata).
 const displayAmount = "0.10";
@@ -303,16 +301,15 @@ async function resolveSolanaPayerSigner() {
 }
 
 export const handleSolanaMppPayShowcase = async (request: Request) => {
-  if (
-    request.method !== "POST" ||
-    request.headers.get(PAY_CONFIRMATION_HEADER) !== PAY_CONFIRMATION_VALUE
-  ) {
+  // Authorization (opt-in env flag + real secret) is enforced by
+  // withShowcasePayAuth in ./index before this handler is reached.
+  if (request.method !== "POST") {
     return json(
       {
-        error: "solana_mpp_pay_confirmation_required",
-        message: "Solana MPP demo wallet payments require a POST request from the showcase UI.",
+        error: "method_not_allowed",
+        message: "Solana MPP demo wallet payments require a POST request.",
       },
-      { status: 400 },
+      { status: 405 },
     );
   }
 
@@ -372,7 +369,7 @@ export const handleSolanaMppPayShowcase = async (request: Request) => {
 
     const headers = new Headers(response.headers);
     headers.set("cache-control", "no-store");
-    headers.set(PAY_CONFIRMATION_HEADER, PAY_CONFIRMATION_VALUE);
+    // Never echo the pay secret back to the caller.
     headers.set("x-flovia-solana-payer", signer.address);
 
     return new Response(response.body, {

@@ -34,7 +34,6 @@ const providerConfig = {
     endpoint: "/showcase/stripe-mpp/paid",
     publicEndpoint: "/api/showcase/stripe-mpp/paid",
     publicPayEndpoint: "/api/showcase/stripe-mpp/pay",
-    payConfirmationValue: "stripe-mpp",
     amount: "$1.00 USD",
     rail: "Tempo token payment",
     accent: "var(--mesh-blue)",
@@ -88,7 +87,6 @@ const providerConfig = {
     endpoint: "/showcase/hitpay-mpp/paid",
     publicEndpoint: "/api/showcase/hitpay-mpp/paid",
     publicPayEndpoint: null,
-    payConfirmationValue: null,
     amount: "S$1.00 SGD",
     rail: "Checkout URL / QR",
     accent: "var(--teal)",
@@ -139,7 +137,6 @@ const providerConfig = {
     endpoint: "/showcase/solana-mpp/paid",
     publicEndpoint: "/api/showcase/solana-mpp/paid",
     publicPayEndpoint: "/api/showcase/solana-mpp/pay",
-    payConfirmationValue: "solana-mpp",
     amount: "0.10 USDC (devnet)",
     rail: "Solana SPL transfer",
     accent: "var(--solana)",
@@ -266,10 +263,9 @@ export function ShowcaseProviderScreen({ provider }: ShowcaseProviderScreenProps
           cache: "no-store",
           method: useCredentialPath ? "POST" : "GET",
           headers: {
+            // The server-side /pay routes are opt-in and require a real secret;
+            // no browser-supplied constant can unlock them.
             accept: "application/json",
-            ...(useCredentialPath && config.payConfirmationValue
-              ? { "x-flovia-showcase-pay": config.payConfirmationValue }
-              : {}),
           },
         },
       );

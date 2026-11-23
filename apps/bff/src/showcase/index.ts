@@ -1,4 +1,5 @@
 import { handleHitPayMppPaidShowcase } from "./hitpay-mpp-paid";
+import { withShowcasePayAuth } from "./pay-authorization";
 import { handleSolanaMppPaidShowcase, handleSolanaMppPayShowcase } from "./solana-mpp-paid";
 import { handleStripeMppPaidShowcase, handleStripeMppPayShowcase } from "./stripe-mpp-paid";
 
@@ -18,13 +19,13 @@ export const handleShowcaseRoute = (
     case "/showcase/stripe-mpp/paid":
       return handleStripeMppPaidShowcase(request);
     case "/showcase/stripe-mpp/pay":
-      return handleStripeMppPayShowcase(request);
+      return withShowcasePayAuth(request, handleStripeMppPayShowcase);
     case "/showcase/hitpay-mpp/paid":
       return handleHitPayMppPaidShowcase(request);
     case "/showcase/solana-mpp/paid":
       return handleSolanaMppPaidShowcase(request);
     case "/showcase/solana-mpp/pay":
-      return handleSolanaMppPayShowcase(request);
+      return withShowcasePayAuth(request, handleSolanaMppPayShowcase);
     default:
       return null;
   }

@@ -237,13 +237,15 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
   });
 
 export const handleStripeMppPayShowcase = async (request: Request) => {
-  if (request.method !== "POST" || request.headers.get("x-flovia-showcase-pay") !== "stripe-mpp") {
+  // Authorization (opt-in env flag + real secret) is enforced by
+  // withShowcasePayAuth in ./index before this handler is reached.
+  if (request.method !== "POST") {
     return json(
       {
-        error: "stripe_mpp_pay_confirmation_required",
-        message: "Stripe MPP demo wallet payments require a POST request from the showcase UI.",
+        error: "method_not_allowed",
+        message: "Stripe MPP demo wallet payments require a POST request.",
       },
-      { status: 400 },
+      { status: 405 },
     );
   }
 
@@ -276,7 +278,7 @@ export const handleStripeMppPayShowcase = async (request: Request) => {
     });
     const headers = new Headers(response.headers);
     headers.set("cache-control", "no-store");
-    headers.set("x-flovia-showcase-pay", "stripe-mpp");
+    // Never echo the pay secret back to the caller.
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
