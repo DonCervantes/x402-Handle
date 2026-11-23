@@ -24,7 +24,7 @@ A Public deployment PR must include a link to this section and must not be merge
 
 ### Prerequisite security issues
 
-- [ ] **Issue #8 — `log_payment` authorization:** closed, or an explicit written waiver is recorded in issue #41. The current contract allows any caller to invoke `log_payment`; this is not acceptable for Public without a documented risk acceptance and mitigation.
+- [ ] **Issue #8 — `log_payment` authorization:** confirm the reviewed WASM enforces provider-owner or allowlisted-oracle authorization, and record oracle configuration before Public deployment; otherwise obtain an explicit written waiver in issue #41.
 - [ ] **Issue #18 — pause and admin transfer:** closed, or an explicit written waiver is recorded in issue #41. The Public deployment must have a tested emergency pause path and a controlled admin rotation policy.
 
 ### Testnet evidence

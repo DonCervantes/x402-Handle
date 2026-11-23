@@ -1,7 +1,6 @@
 // Ticket 3.6 — loguea un pago verificado en el registry on-chain (Soroban).
 // Llamado opcionalmente desde server.ts después de verificar un pago x402.
-// log_payment no requiere auth on-chain (ver contracts/soroban-registry):
-// la protección es por tx_hash único, así que cualquier cuenta puede firmar.
+// El firmante debe ser el owner del provider o un oracle autorizado por el admin.
 
 import {
   rpc,
@@ -24,11 +23,13 @@ export interface OnChainLogOpts {
 
 export async function logPaymentOnChain(
   opts: OnChainLogOpts,
-  payment: { txHash: string; payer: string; amount: string }
+  payment: { txHash: string; payer: string; amount: string },
 ): Promise<void> {
   const sorobanUrl =
     opts.sorobanUrl ??
-    (opts.network === "public" ? "https://soroban.stellar.org" : "https://soroban-testnet.stellar.org");
+    (opts.network === "public"
+      ? "https://soroban.stellar.org"
+      : "https://soroban-testnet.stellar.org");
   const networkPassphrase = opts.network === "public" ? Networks.PUBLIC : Networks.TESTNET;
 
   const server = new rpc.Server(sorobanUrl);
@@ -46,8 +47,9 @@ export async function logPaymentOnChain(
         nativeToScVal(opts.providerId, { type: "u64" }),
         nativeToScVal(Address.fromString(payment.payer), { type: "address" }),
         nativeToScVal(amountStroops, { type: "u64" }),
-        nativeToScVal(txHashBytes, { type: "bytes" })
-      )
+        nativeToScVal(txHashBytes, { type: "bytes" }),
+        nativeToScVal(Address.fromString(caller.publicKey()), { type: "address" }),
+      ),
     )
     .setTimeout(60)
     .build();

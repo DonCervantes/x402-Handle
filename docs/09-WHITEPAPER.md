@@ -137,13 +137,13 @@ struct PaymentLog {
 | `register_provider(owner, name, endpoint, price, token, metadata_hash)` | `owner.require_auth()` | Inserts a new provider, emits `provider_registered` event |
 | `update_provider(id, ...)` | owner of provider | Updates mutable fields |
 | `deactivate(id)` | owner of provider | Sets `active = false` |
-| `log_payment(provider_id, payer, amount, tx_hash)` | open (anyone can attest) | Inserts a `PaymentLog` if not duplicate, emits `payment_logged` |
+| `log_payment(provider_id, payer, amount, tx_hash, authorizer)` | Provider owner or allowlisted oracle (`require_auth`) | Inserts a `PaymentLog` if not duplicate, emits `payment_logged` |
 | `get_provider(id)` | read | Returns provider |
 | `list_providers()` | read | Returns all (paginated in production) |
 
 ### 3.4 Trust assumptions
 
-`log_payment` is callable by anyone, but the function validates that the supplied `tx_hash` corresponds to a real payment on Stellar matching the provider's expected destination and asset. In v1, this check is performed off-chain by the Flovia indexer and only attested on-chain. In future versions, we plan to integrate Soroban's cross-contract calls to a payment verification oracle, or move to a model where the provider's middleware itself submits the log call as part of serving the response.
+`log_payment` requires the provider owner or an admin-allowlisted oracle to authorize the call. The signer attests the payer, amount, and transaction hash after verifying the payment off-chain; Soroban does not independently validate the payment with Horizon or the Token contract.
 
 ---
 
