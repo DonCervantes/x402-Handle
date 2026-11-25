@@ -46,6 +46,13 @@ import {
 const request = (path: string, init: RequestInit = {}) =>
   new Request(`http://localhost${path}`, init);
 
+const LLM_TEST_KEY = "test-llm-key";
+const llmRequest = (path: string, init: RequestInit = {}) =>
+  request(path, {
+    ...init,
+    headers: { authorization: `Bearer ${LLM_TEST_KEY}`, ...init.headers },
+  });
+
 const originalAnalyticsSource = process.env.BFF_ANALYTICS_SOURCE;
 const runtimeMetadata = {
   commitHash: "abc123def456",
@@ -72,6 +79,7 @@ const withTempFile = async (fn: (filePath: string) => Promise<void> | void) => {
   }
 };
 const llmEnvKeys = [
+  "BFF_LLM_API_KEY",
   "BFF_LLM_PROVIDER",
   "BFF_BEDROCK_MODEL_ID",
   "BEDROCK_MODEL_ID",
@@ -217,6 +225,7 @@ describe("BFF routes", () => {
   beforeEach(() => {
     llmEnvSnapshot = snapshotLlmEnv();
     clearLlmEnv();
+    process.env.BFF_LLM_API_KEY = LLM_TEST_KEY;
   });
 
   afterEach(() => {
@@ -731,7 +740,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress.toUpperCase()}/llm/upsell-metrics`),
+      llmRequest(`/customers/${knownCustomerIntelligenceAddress.toUpperCase()}/llm/upsell-metrics`),
     );
     const body = await response.json();
     const parsed = validatePhaseBCustomerUpsellMetricsResponse(body);
@@ -747,7 +756,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+      llmRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
     );
     const body = (await response.json()) as { error: string; message: string };
 
@@ -771,7 +780,7 @@ describe("BFF routes", () => {
 
     try {
       const response = await handler(
-        request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+        llmRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
       );
       const body = (await response.json()) as { error: string; message: string };
 
@@ -833,7 +842,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler(undefined, llmService);
 
     const response = await handler(
-      request(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
+      llmRequest(`/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`),
     );
     const body = await response.json();
     const parsed = validatePhaseBCustomerUpsellExplanationResponse(body);
@@ -890,7 +899,7 @@ describe("BFF routes", () => {
     };
     const handler = createBffHandler(undefined, llmService);
     const timeoutCalls: Array<{ request: Request; seconds: number }> = [];
-    const requestInput = request(
+    const requestInput = llmRequest(
       `/customers/${knownCustomerIntelligenceAddress}/llm/upsell-explanation`,
     );
     const server = {
@@ -917,7 +926,7 @@ describe("BFF routes", () => {
     );
 
     const response = await handler(
-      request(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
+      llmRequest(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
     );
     const parsed = validatePhaseBCustomerWorkflowIntentResponse(await response.json());
 
@@ -975,7 +984,7 @@ describe("BFF routes", () => {
     );
 
     const response = await handler(
-      request(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
+      llmRequest(`/customers/${workflowIntentAddress}/llm/workflow-intent`),
     );
     const parsed = validatePhaseBCustomerWorkflowIntentResponse(await response.json());
 
@@ -1005,7 +1014,7 @@ describe("BFF routes", () => {
     const handler = createBffHandler();
 
     const response = await handler(
-      request("/customers/0x9999999999999999999999999999999999999999/llm/upsell-metrics"),
+      llmRequest("/customers/0x9999999999999999999999999999999999999999/llm/upsell-metrics"),
     );
     const body = (await response.json()) as { error: string };
 
@@ -2119,7 +2128,7 @@ describe("BFF routes", () => {
         request(`/customers/${knownCustomerIntelligenceAddress}/intelligence`),
       );
       const upsellMetricsResponse = await handler(
-        request(`/customers/${knownCustomerProfileAddress}/llm/upsell-metrics`),
+        llmRequest(`/customers/${knownCustomerProfileAddress}/llm/upsell-metrics`),
       );
 
       expect(profileResponse.status).toBe(404);

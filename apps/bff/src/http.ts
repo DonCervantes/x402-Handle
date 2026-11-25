@@ -28,6 +28,7 @@ import {
 } from "./http/responses";
 import {
   AEO_X402_REFRESH_PATH,
+  LLM_CUSTOMER_ROUTE_KINDS,
   STELLAR_PLAYGROUND_PAY_PATH,
   matchCustomerRoute,
   matchProviderDetailRoute,
@@ -35,6 +36,11 @@ import {
   normalizePath,
   readonlyRoutes,
 } from "./http/routes";
+import {
+  createLlmAccessGuard,
+  resolveLlmAccessConfig,
+  type LlmAccessGuard,
+} from "./http/llm-access";
 import { handleShowcaseRoute, showcaseRoutes } from "./showcase";
 import { getStellarHealth } from "./data/stellar-health";
 import { runPlaygroundPayment } from "./data/stellar-playground";
@@ -121,6 +127,7 @@ export const createBffHandler = (
   llmService: BffLlmService | null = resolveBffLlmService(),
   runtimeMetadata: BffRuntimeMetadata = resolveBffRuntimeMetadata(),
   x402Store: X402DiscoveryStore = createX402DiscoveryStore(),
+  llmAccess: LlmAccessGuard = createLlmAccessGuard(resolveLlmAccessConfig(process.env)),
 ) => {
   let analyticsState: AnalyticsLoadState;
 
@@ -252,6 +259,17 @@ export const createBffHandler = (
     const customerRoute = matchCustomerRoute(path);
     const providerRoute = matchProviderDetailRoute(path);
     const stellarProviderRoute = matchStellarProviderRoute(path);
+
+    // LLM/upsell routes are privileged: authenticate before any data work or
+    // model inference so invalid callers cannot probe the read model or quota.
+    if (
+      request.method === "GET" &&
+      customerRoute &&
+      LLM_CUSTOMER_ROUTE_KINDS.has(customerRoute.kind)
+    ) {
+      const denied = llmAccess.authorize(request);
+      if (denied) return denied;
+    }
 
     // ─── Día 4 — registry Stellar (independiente del data layer legacy) ───
     if (request.method === "GET" && path === "/stellar/health") {
