@@ -126,11 +126,13 @@ $ bun add @flovia/agent-sdk
      │
      ▼
   Proveedor instala middleware en su servidor:
-     │   import { x402Stellar } from '@flovia/x402-stellar';
+     │   import { createPostgresReplayStore, x402Stellar } from '@flovia/x402-stellar';
+     │   const replayStore = createPostgresReplayStore({ sql: sharedDatabase });
      │   app.use('/api', x402Stellar({
      │     destination: 'G...',
      │     amountUsdc: '0.005',
-     │     network: 'testnet'
+     │     network: 'testnet',
+     │     replayStore
      │   }));
      │
      ▼

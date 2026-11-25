@@ -11,17 +11,13 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { randomUUID } from "node:crypto";
 
-import {
-  X402_VERSION,
-  type X402Challenge,
-  type X402ServerConfig,
-} from "./types";
+import { X402_VERSION, type X402Challenge, type X402ServerConfig } from "./types";
 import { verifyUsdcPayment } from "./verify";
-import { defaultReplayCache, type ReplayCache } from "./replay-cache";
+import { normalizeTxHash, type ReplayStore } from "./replay-store";
 
 const USDC_ISSUERS = {
   testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  public:  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  public: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 };
 
 /**
@@ -33,11 +29,13 @@ function newMemo(): string {
 }
 
 export interface X402StellarMiddlewareOpts extends X402ServerConfig {
-  replayCache?: ReplayCache;
+  replayStore: ReplayStore;
+  verifyPayment?: typeof verifyUsdcPayment;
 }
 
 export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler {
-  const cache = opts.replayCache ?? defaultReplayCache;
+  const store = opts.replayStore;
+  const verifyPayment = opts.verifyPayment ?? verifyUsdcPayment;
   const ttl = opts.challengeTtlSec ?? 300;
   const issuer = opts.usdcIssuer ?? USDC_ISSUERS[opts.network];
 
@@ -69,21 +67,22 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
     // ─── Con pago: verificar ───────────────────────────────────────
     // El cliente debe enviar: X-PAYMENT: <tx_hash>;memo=<memo>
     // (admitimos también sólo <tx_hash> y validamos memo from Horizon)
-    let txHash = paymentHeader.trim();
+    let rawTxHash = paymentHeader.trim();
     let expectedMemo: string | undefined;
     if (paymentHeader.includes(";")) {
       const parts = paymentHeader.split(";").map((s) => s.trim());
-      txHash = parts[0];
+      rawTxHash = parts[0];
       for (const p of parts.slice(1)) {
         const [k, v] = p.split("=");
         if (k === "memo") expectedMemo = v;
       }
     }
 
-    if (cache.has(txHash)) {
+    const txHash = normalizeTxHash(rawTxHash);
+    if (!txHash) {
       return c.json(
-        { error: "already_consumed", detail: "This payment was already used." },
-        402
+        { error: "invalid_tx_hash", detail: "X-PAYMENT must start with a 64-char hex tx hash." },
+        402,
       );
     }
 
@@ -108,7 +107,7 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       return c.json({ ...challenge, error: "missing_memo" }, 402);
     }
 
-    const result = await verifyUsdcPayment({
+    const result = await verifyPayment({
       txHash,
       expected: {
         destination: opts.destination,
@@ -124,8 +123,22 @@ export function x402Stellar(opts: X402StellarMiddlewareOpts): MiddlewareHandler 
       return c.json({ error: result.reason, detail: result.detail }, 402);
     }
 
-    // ─── Pago válido: marcar consumido + callback opcional ───────────
-    cache.add(txHash);
+    // Claim only after verification; the atomic store operation ensures that
+    // concurrent requests and other replicas cannot consume this hash twice.
+    let claimed: boolean;
+    try {
+      claimed = await store.claim(txHash);
+    } catch (err) {
+      console.error("[x402-stellar] replay store unavailable:", err);
+      return c.json(
+        { error: "replay_store_unavailable", detail: "Payment could not be checked; retry later." },
+        503,
+      );
+    }
+    if (!claimed) {
+      return c.json({ error: "already_consumed", detail: "This payment was already used." }, 402);
+    }
+
     if (opts.onPaymentVerified) {
       try {
         await opts.onPaymentVerified({

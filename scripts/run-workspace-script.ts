@@ -9,6 +9,7 @@ if (!scriptName || !supportedScripts.has(scriptName)) {
 
 const workspaces = [
   "packages/contracts",
+  "packages/x402-stellar",
   "packages/sources",
   "packages/intelligence",
   "apps/cli",

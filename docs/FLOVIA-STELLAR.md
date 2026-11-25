@@ -894,11 +894,13 @@ $ bun add @flovia/agent-sdk
      │
      ▼
   Proveedor instala middleware en su servidor:
-     │   import { x402Stellar } from '@flovia/x402-stellar';
+     │   import { createPostgresReplayStore, x402Stellar } from '@flovia/x402-stellar';
+     │   const replayStore = createPostgresReplayStore({ sql: sharedDatabase });
      │   app.use('/api', x402Stellar({
      │     destination: 'G...',
      │     amountUsdc: '0.005',
-     │     network: 'testnet'
+     │     network: 'testnet',
+     │     replayStore
      │   }));
      │
      ▼
@@ -2986,13 +2988,19 @@ x402-stellar-middleware/
 
 **Uso (servidor):**
 ```ts
-import { x402Stellar } from "@flovia/x402-stellar";
+import { SQL } from "bun";
+import { createPostgresReplayStore, x402Stellar } from "@flovia/x402-stellar";
 import { Hono } from "hono";
 const app = new Hono();
+const replayStore = createPostgresReplayStore({
+  sql: new SQL(process.env.X402_REPLAY_DATABASE_URL!),
+});
+await replayStore.ensureSchema();
 app.use("/api/*", x402Stellar({
   destination: process.env.PROVIDER_ACCOUNT!,
   amountUsdc: "0.005",
   network: "testnet",
+  replayStore,
 }));
 app.get("/api/rate", (c) => c.json({ pair: "EUR/USD", rate: 1.0843 }));
 ```
