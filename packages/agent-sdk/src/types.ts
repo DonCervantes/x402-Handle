@@ -15,6 +15,10 @@ export type FloviaOpts = {
   bffUrl?: string;
   /** Máximo monto USDC por call que el SDK aceptará pagar sin pedir confirmación explícita. */
   maxAmountUsdc?: number;
+  /** Máximo monto USDC acumulado por día (UTC) que el SDK aceptará pagar. */
+  dailyCapUsdc?: number;
+  /** Reloj inyectable (epoch ms) para la ventana diaria de gasto. Default: Date.now. */
+  now?: () => number;
 };
 
 export type RecommendOpts = {

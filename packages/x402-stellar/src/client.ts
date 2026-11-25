@@ -18,7 +18,10 @@ import {
   Networks,
 } from "@stellar/stellar-sdk";
 
+import { DailySpendBudget, type DailySpendBudgetOpts } from "./budget";
 import { X402ChallengeSchema, type X402Challenge } from "./types";
+
+export { DailySpendBudget, type DailySpendBudgetOpts };
 
 const HORIZON_URLS = {
   testnet: "https://horizon-testnet.stellar.org",
@@ -37,6 +40,8 @@ export interface X402PayOpts {
   fetchImpl?: typeof fetch;
   /** Opcional: máximo monto que el agente está dispuesto a pagar (USDC) */
   maxAmountUsdc?: number;
+  /** Opcional: presupuesto diario acumulado de gasto (USDC) */
+  dailyBudget?: DailySpendBudget;
   /** Opcional: timeout de espera de confirmación on-chain en ms (default 30s) */
   confirmationTimeoutMs?: number;
 }
@@ -82,39 +87,46 @@ export async function x402Pay(opts: X402PayOpts): Promise<X402PayResult> {
   const challengeRaw = await firstRes.json();
   const challenge: X402Challenge = X402ChallengeSchema.parse(challengeRaw);
 
-  // 3) Guard rail: max amount
+  // 3) Guard rail: max amount + daily budget (must run before signing)
   if (opts.maxAmountUsdc != null && Number(challenge.amount) > opts.maxAmountUsdc) {
     throw new Error(
       `x402Pay: challenge amount ${challenge.amount} exceeds maxAmountUsdc ${opts.maxAmountUsdc}`
     );
   }
+  const releaseBudget = opts.dailyBudget?.reserve(Number(challenge.amount));
 
   // 4) Construir y firmar la transacción
-  const keypair = Keypair.fromSecret(opts.agentSecret);
-  const sourceAccount = await server.loadAccount(keypair.publicKey());
+  let txHash: string;
+  try {
+    const keypair = Keypair.fromSecret(opts.agentSecret);
+    const sourceAccount = await server.loadAccount(keypair.publicKey());
 
-  const usdc = new Asset(challenge.asset.code, challenge.asset.issuer);
+    const usdc = new Asset(challenge.asset.code, challenge.asset.issuer);
 
-  const tx = new TransactionBuilder(sourceAccount, {
-    fee: BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(
-      Operation.payment({
-        destination: challenge.destination,
-        asset: usdc,
-        amount: challenge.amount,
-      })
-    )
-    .addMemo(Memo.text(challenge.memo))
-    .setTimeout(60)
-    .build();
+    const tx = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: challenge.destination,
+          asset: usdc,
+          amount: challenge.amount,
+        })
+      )
+      .addMemo(Memo.text(challenge.memo))
+      .setTimeout(60)
+      .build();
 
-  tx.sign(keypair);
+    tx.sign(keypair);
 
-  // 5) Submit y esperar finalidad
-  const submitResult = await server.submitTransaction(tx);
-  const txHash = submitResult.hash;
+    // 5) Submit y esperar finalidad
+    const submitResult = await server.submitTransaction(tx);
+    txHash = submitResult.hash;
+  } catch (err) {
+    releaseBudget?.();
+    throw err;
+  }
 
   // 6) Reintentar el request original con X-PAYMENT
   const headers = new Headers(opts.fetchInit?.headers ?? {});
