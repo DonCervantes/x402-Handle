@@ -8,8 +8,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "test": "bun test --pass-with-no-tests",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run typecheck && bun run test"
   },
   "dependencies": {
     "@flovia/x402-stellar": "workspace:*",
