@@ -28,3 +28,17 @@ jobs:
 
       - name: Check formatting
         run: bun run format:check
+
+  cargo-test:
+    name: Cargo Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run cargo test
+        working-directory: contracts/soroban-registry
+        run: cargo test
