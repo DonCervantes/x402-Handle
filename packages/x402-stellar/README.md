@@ -14,7 +14,7 @@ src/
 ├── server.ts       # middleware estilo Hono/Express
 ├── client.ts       # helper para agentes (paga + reintenta)
 ├── verify.ts       # verificación on-chain (consulta Horizon)
-└── replay-cache.ts # idempotencia por tx_hash
+└── replay-store*.ts # idempotencia durable por tx_hash
 ```
 
 ## Instalación (en el monorepo)
@@ -22,10 +22,15 @@ src/
 Por ahora vive dentro del repo como `@flovia/x402-stellar`. Para publicarlo a npm más adelante.
 
 ```ts
-import { x402Stellar } from "@flovia/x402-stellar";
+import { SQL } from "bun";
+import { createPostgresReplayStore, x402Stellar } from "@flovia/x402-stellar";
 import { Hono } from "hono";
 
 const app = new Hono();
+const replayStore = createPostgresReplayStore({
+  sql: new SQL(process.env.X402_REPLAY_DATABASE_URL!),
+});
+await replayStore.ensureSchema();
 
 app.use(
   "/api/*",
@@ -33,6 +38,7 @@ app.use(
     destination: process.env.PROVIDER_ACCOUNT!,      // G...
     amountUsdc: "0.005",
     network: "testnet",
+    replayStore,
     onPaymentVerified: async ({ txHash, payer }) => {
       // opcional: log_payment al contrato Soroban
     },
@@ -77,7 +83,7 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 
 - **Sólo USDC.** Multi-asset queda para v2.
 - **Memo único** por challenge: garantiza idempotencia.
-- **Replay protection** local con TTL de 24h por defecto.
+- **Replay protection** atómica y durable: los hashes consumidos no expiran y el store debe compartirse entre instancias. Postgres es la opción recomendada; Redis requiere persistencia AOF y `noeviction`. El store en memoria es sólo para pruebas y desarrollo local.
 - **Verificación contra Horizon**, nunca contra el cliente.
 
 ## Tests
@@ -85,3 +91,8 @@ Use `decideSponsorship` as the deterministic policy layer; transaction construct
 ```bash
 bun test
 ```
+
+`X402_REPLAY_DATABASE_URL` must point to a shared persistent Postgres database
+for deployed instances. The demo provider requires this URL on Public and
+defaults to it on Testnet. For local Testnet development only, explicitly set
+`X402_REPLAY_ALLOW_MEMORY=true` to use the non-durable in-memory store.
