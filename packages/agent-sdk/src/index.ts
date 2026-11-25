@@ -4,7 +4,7 @@
 // usando x402-stellar (sin pasar por el BFF para el pago — el agente firma
 // con su propio secret).
 import type { StellarProvider } from "contracts";
-import { x402Pay } from "@flovia/x402-stellar/client";
+import { DailySpendBudget, x402Pay } from "@flovia/x402-stellar/client";
 import type {
   DiscoverAndCallOpts,
   DiscoverAndCallResult,
@@ -28,6 +28,7 @@ export class Flovia {
   private readonly network: "testnet" | "public";
   private readonly bffUrl: string;
   private readonly maxAmountUsdc?: number;
+  private readonly dailyBudget?: DailySpendBudget;
 
   constructor(opts: FloviaOpts) {
     if (!opts.secret) throw new Error("Flovia: missing 'secret' (agent Stellar seed, S...)");
@@ -35,6 +36,12 @@ export class Flovia {
     this.network = opts.network ?? "testnet";
     this.bffUrl = (opts.bffUrl ?? DEFAULT_BFF_URL).replace(/\/$/, "");
     this.maxAmountUsdc = opts.maxAmountUsdc;
+    if (opts.dailyCapUsdc !== undefined) {
+      this.dailyBudget = new DailySpendBudget({
+        capUsdc: opts.dailyCapUsdc,
+        now: opts.now,
+      });
+    }
   }
 
   /** Catálogo completo de providers registrados en el registry Soroban. */
@@ -69,6 +76,7 @@ export class Flovia {
       agentSecret: this.secret,
       network: this.network,
       maxAmountUsdc: this.maxAmountUsdc,
+      dailyBudget: this.dailyBudget,
     });
     if (result.response.status !== 200) {
       throw new Error(
