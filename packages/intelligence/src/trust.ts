@@ -5,7 +5,8 @@
 //   age      = min(1, days_since_registered / 90)        w1 = 0.15
 //   volume   = min(1, log10(usdc_volume_30d + 1) / 4)     w2 = 0.30
 //   kyb      = 1.0 verified, 0.3 pending, 0 none          w3 = 0.30
-//   claims   = 1 - min(1, disputes / payments)            w4 = 0.15
+//   claims   = 0 hasta que exista una fuente real de disputas;
+//              con esa fuente: 1 - min(1, disputes / payments) w4 = 0.15
 //   recency  = 1.0 si activo en 7d, 0.5 si 30d, 0 si más  w5 = 0.10
 //
 //   Score final = round(100 · sum(pesos · factores))
@@ -25,9 +26,9 @@ export interface TrustScoreInput {
   /** Volumen total en USDC pagado al provider en los últimos 30 días. */
   volume30dUsdc: number;
   kybStatus: KybStatus;
-  /** Disputas/incidentes reportados sobre el provider (lifetime). */
+  /** Disputas/incidentes reportados sobre el provider (lifetime). Placeholder: hoy no hay fuente real. */
   disputeCount: number;
-  /** Pagos totales recibidos por el provider (lifetime, ≥ disputeCount). */
+  /** Pagos totales recibidos por el provider (lifetime, ≥ disputeCount). Placeholder del componente claims. */
   paymentCount: number;
   /** Última vez que el provider tuvo un pago exitoso, o null si nunca. */
   lastPaymentAt: Date | null;
@@ -56,9 +57,14 @@ export function kybFactor(status: KybStatus): number {
   return 0;
 }
 
-export function claimsFactor(disputeCount: number, paymentCount: number): number {
-  if (paymentCount <= 0) return 0; // sin historial de pagos, sin señal (ni positiva ni negativa)
-  return clamp01(1 - Math.min(1, disputeCount / paymentCount));
+/**
+ * There is no dispute feed yet: `apps/bff` hardcodes `disputeCount` to 0.
+ * Scoring 1.0 here would hand every provider an undeserved 15-point bonus, so
+ * the component stays neutral until a real dispute source is connected.
+ * The signature is kept so the contract and callers do not change.
+ */
+export function claimsFactor(_disputeCount: number, _paymentCount: number): number {
+  return 0;
 }
 
 export function recencyFactor(lastPaymentAt: Date | null, now: Date): number {

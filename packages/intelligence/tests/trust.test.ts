@@ -32,11 +32,15 @@ describe("kybFactor", () => {
 });
 
 describe("claimsFactor", () => {
-  test("sin pagos → 0 (sin historial, sin señal)", () => expect(claimsFactor(0, 0)).toBe(0));
-  test("sin disputas → 1", () => expect(claimsFactor(0, 100)).toBe(1));
-  test("mitad de pagos disputados → 0.5", () => expect(claimsFactor(5, 10)).toBe(0.5));
+  // No hay fuente real de disputas: `disputeCount` siempre es 0 (o un mock).
+  // Neutralizamos el componente para no regalar 15 puntos por esa ausencia.
+  test("sin pagos → 0", () => expect(claimsFactor(0, 0)).toBe(0));
+  test("sin disputas reportadas → 0 (no otorga crédito)", () =>
+    expect(claimsFactor(0, 100)).toBe(0));
+  test("disputas simuladas → 0 (no penaliza con datos falsos)", () =>
+    expect(claimsFactor(5, 10)).toBe(0));
   test("todos los pagos disputados → 0", () => expect(claimsFactor(10, 10)).toBe(0));
-  test("más disputas que pagos (dato inconsistente) → clamp a 0", () =>
+  test("más disputas que pagos (dato inconsistente) → 0", () =>
     expect(claimsFactor(15, 10)).toBe(0));
 });
 
@@ -65,7 +69,7 @@ describe("computeTrustScore", () => {
     expect(result.score).toBe(0);
   });
 
-  test("provider ideal: viejo, alto volumen, KYB verified, sin disputas, activo hoy → score alto", () => {
+  test("provider ideal sin fuente de disputas → tope 85 (claims no aporta)", () => {
     const result = computeTrustScore({
       registeredAt: daysAgo(365),
       volume30dUsdc: 100_000,
@@ -75,8 +79,8 @@ describe("computeTrustScore", () => {
       lastPaymentAt: daysAgo(0),
       now: NOW,
     });
-    expect(result.score).toBeGreaterThanOrEqual(95);
-    expect(result.score).toBeLessThanOrEqual(100);
+    expect(result.components.claims).toBe(0);
+    expect(result.score).toBe(85);
   });
 
   test("componentes y pesos quedan persistidos en el resultado para auditabilidad", () => {
@@ -92,11 +96,29 @@ describe("computeTrustScore", () => {
     expect(result.components.age).toBeCloseTo(0.5, 5);
     expect(result.components.volume).toBeCloseTo(0.5, 5);
     expect(result.components.kyb).toBe(0.3);
-    expect(result.components.claims).toBe(0.9);
+    expect(result.components.claims).toBe(0);
     expect(result.components.recency).toBe(0.5);
-    expect(result.weights.volume).toBe(0.3);
-    // 100 * (0.15*0.5 + 0.30*0.5 + 0.30*0.3 + 0.15*0.9 + 0.10*0.5) = 50 → round = 50
-    expect(result.score).toBe(50);
+    expect(result.weights.claims).toBe(0.15);
+    // claims neutralizado: no suma los 0.15 * 0.9 que sumaba antes.
+    const expected = 0.15 * 0.5 + 0.3 * 0.5 + 0.3 * 0.3 + 0.15 * 0 + 0.1 * 0.5;
+    expect(result.score).toBe(Math.round(100 * expected));
+  });
+
+  test("el score no cambia aunque cambien los datos de disputas", () => {
+    const base = {
+      registeredAt: daysAgo(45),
+      volume30dUsdc: 99,
+      kybStatus: "verified" as const,
+      paymentCount: 10,
+      lastPaymentAt: daysAgo(8),
+      now: NOW,
+    };
+    const sinDisputas = computeTrustScore({ ...base, disputeCount: 0 });
+    const conDisputas = computeTrustScore({ ...base, disputeCount: 9 });
+
+    expect(sinDisputas.components.claims).toBe(0);
+    expect(conDisputas.components.claims).toBe(0);
+    expect(conDisputas.score).toBe(sinDisputas.score);
   });
 
   test("score siempre es un entero entre 0 y 100", () => {
