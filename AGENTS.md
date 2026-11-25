@@ -78,3 +78,9 @@ Types:
 - `perf`: performance improvement
 - `style`: formatting or whitespace (no logic change)
 - `revert`: revert prior commit
+
+# Issue and PR completion
+
+- Mark an issue as completed only after a linked pull request merges to `main`.
+- Do not treat wave application acceptance or assignment as issue completion.
+- Review or close open pull requests that claim closed issues; do not leave the issue board empty while `main` still contains the bug.
