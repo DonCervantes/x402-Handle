@@ -56,6 +56,15 @@ export const unauthorized = (message = "Missing or invalid authorization.") =>
 export const forbidden = (message = "Forbidden.") =>
   json({ error: "forbidden", message }, { status: 403 });
 
+export const tooManyRequests = (retryAfterSeconds: number) =>
+  json(
+    {
+      error: "rate_limited",
+      message: "LLM API rate limit exceeded. Retry after the indicated window.",
+    },
+    { status: 429, headers: { "retry-after": String(retryAfterSeconds) } },
+  );
+
 export const analyticsLoading = () =>
   json(
     {

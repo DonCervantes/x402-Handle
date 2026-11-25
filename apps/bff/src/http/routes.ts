@@ -58,6 +58,13 @@ export type CustomerRouteMatch = {
   address: string;
 };
 
+// LLM-backed and upsell routes are privileged: they need a credential and a quota.
+export const LLM_CUSTOMER_ROUTE_KINDS: ReadonlySet<CustomerRouteKind> = new Set([
+  "upsellMetrics",
+  "upsellExplanation",
+  "workflowIntent",
+]);
+
 const customerRoutePatterns: Array<[CustomerRouteKind, RegExp]> = [
   ["profile", /^\/customers\/([^/]+)\/profile$/],
   ["intelligence", /^\/customers\/([^/]+)\/intelligence$/],
