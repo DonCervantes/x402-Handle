@@ -294,7 +294,11 @@ export const createBffHandler = (
 
       if (
         request.method === "POST" &&
-        (path === "/showcase/stripe-mpp/pay" || path === "/showcase/solana-mpp/pay")
+        (path === "/showcase/stripe-mpp/pay" ||
+          path === "/showcase/solana-mpp/pay" ||
+          // PaymentIntent creation is an authenticated POST (#157); the
+          // handler enforces the auth + rate-limit gate before creating.
+          path === "/showcase/stripe-mpp/paid")
       ) {
         return handleShowcaseRoute(request, path) ?? notFound(path);
       }

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { Credential } from "mppx";
 import { Mppx as ClientMppx, tempo as clientTempo } from "mppx/client";
 import { Mppx as ServerMppx, tempo } from "mppx/server";
@@ -16,12 +15,23 @@ const pathUsd = "0x20c0000000000000000000000000000000000000";
 const tempoDecimals = 6;
 const paymentCacheTtlMs = 5 * 60 * 1000;
 
+// PaymentIntent creation gate (#157): creating a Stripe PaymentIntent is a
+// state-changing, billable operation, so it is allowed only on an
+// authenticated POST and is rate limited per client.
+const paymentIntentWindowMs = 60 * 1000;
+const paymentIntentMaxPerWindow = 5;
+
 type StripeShowcaseConfig = {
   client: Stripe;
   mppSecretKey: string;
 };
 
+type StripeConfigResolution =
+  | { ok: true; config: StripeShowcaseConfig }
+  | { ok: false; reason: "missing_stripe_key" | "missing_mpp_secret" };
+
 const paymentCache = new Map<string, { paymentIntentId: string; expiresAt: number }>();
+const paymentIntentAttempts = new Map<string, number[]>();
 let cachedConfig: StripeShowcaseConfig | null = null;
 
 class InvalidStripeMppCredentialError extends Error {
@@ -31,15 +41,36 @@ class InvalidStripeMppCredentialError extends Error {
   }
 }
 
+class PaymentIntentAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PaymentIntentAuthError";
+  }
+}
+
+class PaymentIntentRateLimitError extends Error {
+  constructor() {
+    super("PaymentIntent creation rate limit exceeded. Retry after the current window.");
+    this.name = "PaymentIntentRateLimitError";
+  }
+}
+
 const envValue = (key: string) => {
   const value = process.env[key]?.trim();
   return value ? value : null;
 };
 
-const resolveStripeShowcaseConfig = () => {
+const resolveStripeShowcaseConfig = (): StripeConfigResolution => {
   const stripeSecretKey = envValue("STRIPE_SECRET_KEY");
-  if (!stripeSecretKey) return null;
-  if (cachedConfig) return cachedConfig;
+  if (!stripeSecretKey) return { ok: false, reason: "missing_stripe_key" };
+
+  // Fail closed (#157): the MPP server secret must be configured. Never
+  // generate an ephemeral secret at runtime — it would change on every
+  // restart and silently invalidate previously issued challenges.
+  const mppSecretKey = envValue("MPP_SECRET_KEY");
+  if (!mppSecretKey) return { ok: false, reason: "missing_mpp_secret" };
+
+  if (cachedConfig) return { ok: true, config: cachedConfig };
 
   cachedConfig = {
     client: new Stripe(stripeSecretKey, {
@@ -52,10 +83,58 @@ const resolveStripeShowcaseConfig = () => {
         version: "1.0.0",
       },
     }),
-    mppSecretKey: envValue("MPP_SECRET_KEY") ?? crypto.randomBytes(32).toString("base64"),
+    mppSecretKey,
   };
 
-  return cachedConfig;
+  return { ok: true, config: cachedConfig };
+};
+
+const paymentIntentClientKey = (request: Request) => {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || request.headers.get("cf-connecting-ip") || "unknown";
+};
+
+/**
+ * Gate for Stripe PaymentIntent creation (#157). Requests that carry an MPP
+ * credential for an already-created PaymentIntent never reach this gate —
+ * only creation does. Creation requires:
+ *   - a POST request (a GET must never create PaymentIntents), and
+ *   - an `Authorization: Bearer` token matching SHOWCASE_STRIPE_INTENT_TOKEN,
+ * and is rate limited per client over a sliding window.
+ */
+const assertCanCreatePaymentIntent = (request: Request) => {
+  if (request.method !== "POST") {
+    throw new PaymentIntentAuthError(
+      "Stripe PaymentIntents are created only on an authenticated POST, not on GET.",
+    );
+  }
+
+  const expectedToken = envValue("SHOWCASE_STRIPE_INTENT_TOKEN");
+  if (!expectedToken) {
+    throw new PaymentIntentAuthError(
+      "Set SHOWCASE_STRIPE_INTENT_TOKEN to enable Stripe PaymentIntent creation.",
+    );
+  }
+
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization)?.[1]?.trim();
+  if (!bearer || bearer !== expectedToken) {
+    throw new PaymentIntentAuthError(
+      "Missing or invalid Authorization Bearer token for Stripe PaymentIntent creation.",
+    );
+  }
+
+  const key = paymentIntentClientKey(request);
+  const now = Date.now();
+  const attempts = (paymentIntentAttempts.get(key) ?? []).filter(
+    (timestamp) => now - timestamp < paymentIntentWindowMs,
+  );
+  if (attempts.length >= paymentIntentMaxPerWindow) {
+    paymentIntentAttempts.set(key, attempts);
+    throw new PaymentIntentRateLimitError();
+  }
+  attempts.push(now);
+  paymentIntentAttempts.set(key, attempts);
 };
 
 const resolveMppxPrivateKey = () => {
@@ -99,6 +178,11 @@ const createPayToAddress = async (request: Request, client: Stripe) => {
     };
   }
 
+  // Fail closed (#157): only an authenticated, rate-limited POST may create
+  // a PaymentIntent. Credential-bearing retries reuse the cached intent
+  // above and never reach this point.
+  assertCanCreatePaymentIntent(request);
+
   const paymentIntent = await client.paymentIntents.create({
     amount: Number(amount) * 100,
     currency,
@@ -140,15 +224,35 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
     amount,
     currency,
     handler: async ({ requestId, attachPaymentContext }) => {
-      const config = resolveStripeShowcaseConfig();
+      const resolved = resolveStripeShowcaseConfig();
 
-      if (!config) {
+      if (!resolved.ok && resolved.reason === "missing_mpp_secret") {
+        return json(
+          {
+            error: "stripe_mpp_secret_required",
+            message:
+              "Set MPP_SECRET_KEY to a stable server secret to enable the Stripe MPP showcase flow. The showcase does not generate secrets at runtime.",
+            requiredEnv: ["STRIPE_SECRET_KEY", "MPP_SECRET_KEY"],
+            optionalEnv: ["MPPX_PRIVATE_KEY", "SHOWCASE_STRIPE_INTENT_TOKEN"],
+            floviaEvent: {
+              status: "configuration_required",
+              responseStatus: 503,
+              payment: { provider, rail, amount, currency },
+              joinedInsight:
+                "Stripe MPP showcase fails closed when MPP_SECRET_KEY is unset instead of generating an ephemeral secret.",
+            },
+          },
+          { status: 503 },
+        );
+      }
+
+      if (!resolved.ok) {
         return json(
           {
             error: "stripe_mpp_not_configured",
             message: "Set STRIPE_SECRET_KEY to enable the real Stripe MPP live showcase flow.",
-            requiredEnv: ["STRIPE_SECRET_KEY"],
-            optionalEnv: ["MPPX_PRIVATE_KEY", "MPP_SECRET_KEY"],
+            requiredEnv: ["STRIPE_SECRET_KEY", "MPP_SECRET_KEY"],
+            optionalEnv: ["MPPX_PRIVATE_KEY", "SHOWCASE_STRIPE_INTENT_TOKEN"],
             floviaEvent: {
               status: "configuration_required",
               responseStatus: 503,
@@ -161,12 +265,46 @@ export const handleStripeMppPaidShowcase = (request: Request) =>
         );
       }
 
+      const config = resolved.config;
+
       let recipient: `0x${string}`;
       let paymentIntentId: string;
 
       try {
         ({ recipient, paymentIntentId } = await createPayToAddress(request, config.client));
       } catch (error) {
+        if (error instanceof PaymentIntentAuthError) {
+          return json(
+            {
+              error: "stripe_payment_intent_auth_required",
+              message: error.message,
+              floviaEvent: {
+                status: "payment_intent_blocked",
+                responseStatus: 401,
+                payment: { provider, rail, amount, currency },
+                joinedInsight:
+                  "Blocked an unauthenticated attempt to create a Stripe PaymentIntent; creation requires an authenticated POST.",
+              },
+            },
+            { status: 401 },
+          );
+        }
+        if (error instanceof PaymentIntentRateLimitError) {
+          return json(
+            {
+              error: "stripe_payment_intent_rate_limited",
+              message: error.message,
+              floviaEvent: {
+                status: "rate_limited",
+                responseStatus: 429,
+                payment: { provider, rail, amount, currency },
+                joinedInsight:
+                  "Rate limited Stripe PaymentIntent creation for this client; no new PaymentIntent was created.",
+              },
+            },
+            { status: 429 },
+          );
+        }
         if (!(error instanceof InvalidStripeMppCredentialError)) throw error;
         return json(
           {

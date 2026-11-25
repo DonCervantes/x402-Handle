@@ -5,9 +5,12 @@ const request = (path: string, init: RequestInit = {}) =>
   new Request(`http://localhost${path}`, init);
 const originalHitPayApiKey = process.env.HITPAY_API_KEY;
 const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const originalMppSecretKey = process.env.MPP_SECRET_KEY;
+const originalShowcaseStripeIntentToken = process.env.SHOWCASE_STRIPE_INTENT_TOKEN;
 const originalMppxPrivateKey = process.env.MPPX_PRIVATE_KEY;
 const originalSolanaRecipient = process.env.SOLANA_MPP_RECIPIENT;
 const originalSolanaNetwork = process.env.SOLANA_MPP_NETWORK;
+const originalSolanaSecretKey = process.env.SOLANA_MPP_SECRET_KEY;
 const originalSolanaPayerKey = process.env.SOLANA_MPP_PAYER_PRIVATE_KEY;
 
 describe("showcase paid API routes", () => {
@@ -22,6 +25,18 @@ describe("showcase paid API routes", () => {
       delete process.env.STRIPE_SECRET_KEY;
     } else {
       process.env.STRIPE_SECRET_KEY = originalStripeSecretKey;
+    }
+
+    if (originalMppSecretKey === undefined) {
+      delete process.env.MPP_SECRET_KEY;
+    } else {
+      process.env.MPP_SECRET_KEY = originalMppSecretKey;
+    }
+
+    if (originalShowcaseStripeIntentToken === undefined) {
+      delete process.env.SHOWCASE_STRIPE_INTENT_TOKEN;
+    } else {
+      process.env.SHOWCASE_STRIPE_INTENT_TOKEN = originalShowcaseStripeIntentToken;
     }
 
     if (originalMppxPrivateKey === undefined) {
@@ -40,6 +55,12 @@ describe("showcase paid API routes", () => {
       delete process.env.SOLANA_MPP_NETWORK;
     } else {
       process.env.SOLANA_MPP_NETWORK = originalSolanaNetwork;
+    }
+
+    if (originalSolanaSecretKey === undefined) {
+      delete process.env.SOLANA_MPP_SECRET_KEY;
+    } else {
+      process.env.SOLANA_MPP_SECRET_KEY = originalSolanaSecretKey;
     }
 
     if (originalSolanaPayerKey === undefined) {
@@ -67,6 +88,106 @@ describe("showcase paid API routes", () => {
     expect(body.floviaEvent.latencyMs).toBeGreaterThan(0);
   });
 
+  test("fails closed when MPP_SECRET_KEY is missing even if STRIPE_SECRET_KEY is set", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    delete process.env.MPP_SECRET_KEY;
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string; requiredEnv: string[] };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("stripe_mpp_secret_required");
+    expect(body.requiredEnv).toContain("MPP_SECRET_KEY");
+  });
+
+  test("does not create PaymentIntents on unauthenticated GET", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
+    process.env.SHOWCASE_STRIPE_INTENT_TOKEN = "test-intent-token";
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("stripe_payment_intent_auth_required");
+  });
+
+  test("does not create PaymentIntents on POST without the intent token", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
+    process.env.SHOWCASE_STRIPE_INTENT_TOKEN = "test-intent-token";
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid", {
+        method: "POST",
+        headers: { authorization: "Bearer wrong-token" },
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("stripe_payment_intent_auth_required");
+  });
+
+  test("authenticated POST passes the PaymentIntent gate (fails later at Stripe, not at the gate)", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
+    process.env.SHOWCASE_STRIPE_INTENT_TOKEN = "test-intent-token";
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/stripe-mpp/paid", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-intent-token",
+          "x-forwarded-for": "198.51.100.23",
+        },
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    // The dummy Stripe key cannot complete a real create, but the request
+    // must get past the auth gate: no 401 and no gate error shape.
+    expect(response.status).not.toBe(401);
+    expect(body.error).not.toBe("stripe_payment_intent_auth_required");
+    expect(body.error).not.toBe("stripe_payment_intent_rate_limited");
+  });
+
+  test("rate limits PaymentIntent creation per client", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
+    process.env.SHOWCASE_STRIPE_INTENT_TOKEN = "test-intent-token";
+
+    const handler = createBffHandler(new Promise<never>(() => {}));
+    const attempt = () =>
+      handler(
+        request("/showcase/stripe-mpp/paid", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer test-intent-token",
+            "x-forwarded-for": "203.0.113.7",
+          },
+        }),
+      );
+
+    // The first attempts pass the gate (and fail later at Stripe with the
+    // dummy key); the limiter must cut in once the window budget is spent.
+    let lastStatus = 0;
+    let lastError = "";
+    for (let i = 0; i < 6; i++) {
+      const response = await attempt();
+      const body = (await response.json()) as { error: string };
+      lastStatus = response.status;
+      lastError = body.error;
+    }
+
+    expect(lastStatus).toBe(429);
+    expect(lastError).toBe("stripe_payment_intent_rate_limited");
+  });
+
   test("does not accept demo credentials for real Stripe MPP flow", async () => {
     delete process.env.STRIPE_SECRET_KEY;
     const response = await createBffHandler(new Promise<never>(() => {}))(
@@ -80,6 +201,7 @@ describe("showcase paid API routes", () => {
 
   test("rejects malformed Stripe MPP credentials before creating PaymentIntents", async () => {
     process.env.STRIPE_SECRET_KEY = "sk_test_showcase";
+    process.env.MPP_SECRET_KEY = "stable-mpp-secret-for-tests";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
       request("/showcase/stripe-mpp/paid", {
@@ -167,6 +289,20 @@ describe("showcase paid API routes", () => {
     expect(body.requiredEnv).toContain("SOLANA_MPP_RECIPIENT");
     expect(body.floviaEvent.status).toBe("configuration_required");
     expect(body.floviaEvent.latencyMs).toBeGreaterThan(0);
+  });
+
+  test("fails closed when SOLANA_MPP_SECRET_KEY is missing (no runtime secret generation)", async () => {
+    process.env.SOLANA_MPP_RECIPIENT = "DummyRecipient1111111111111111111111111111111";
+    delete process.env.SOLANA_MPP_SECRET_KEY;
+
+    const response = await createBffHandler(new Promise<never>(() => {}))(
+      request("/showcase/solana-mpp/paid"),
+    );
+    const body = (await response.json()) as { error: string; requiredEnv: string[] };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("solana_mpp_secret_required");
+    expect(body.requiredEnv).toContain("SOLANA_MPP_SECRET_KEY");
   });
 
   test("the Solana not_configured response reflects the configured network", async () => {
@@ -294,6 +430,7 @@ describe("showcase paid API routes", () => {
     // Without this, CI runs that don't define SOLANA_MPP_RECIPIENT see the
     // paid handler short-circuit at 503 before the payment stage is reached.
     process.env.SOLANA_MPP_RECIPIENT = "9cVgh9GaPrQ7nsCEwx1GE9eqSArs5XodyMX7vLRhHp4F";
+    process.env.SOLANA_MPP_SECRET_KEY = "stable-solana-mpp-secret-for-tests";
 
     const response = await createBffHandler(new Promise<never>(() => {}))(
       request("/showcase/solana-mpp/pay", {
